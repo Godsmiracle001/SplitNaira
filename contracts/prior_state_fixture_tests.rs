@@ -78,7 +78,15 @@ impl<'a> Fixture<'a> {
             projects.push(id);
         }
 
-        Fixture { env, client, contract_id, token, admin, collabs, projects }
+        Fixture {
+            env,
+            client,
+            contract_id,
+            token,
+            admin,
+            collabs,
+            projects,
+        }
     }
 
     fn storage<R>(&self, f: impl FnOnce() -> R) -> R {
@@ -179,7 +187,10 @@ impl<'a> Fixture<'a> {
     }
 
     fn total_project_balances(&self) -> i128 {
-        self.projects.iter().map(|id| self.client.get_balance(id)).sum()
+        self.projects
+            .iter()
+            .map(|id| self.client.get_balance(id))
+            .sum()
     }
 
     fn deposit(&self, id: &Symbol, amount: i128) {
@@ -234,7 +245,11 @@ fn v1_reads_work_before_any_migration() {
     let env = Env::default();
     let fx = Fixture::v1_flat_index(&env, 3);
 
-    assert_eq!(fx.all_ids(), fx.projects, "flat index fallback keeps creation order");
+    assert_eq!(
+        fx.all_ids(),
+        fx.projects,
+        "flat index fallback keeps creation order"
+    );
     assert_eq!(fx.client.list_projects(&0, &10).len(), 3);
     assert_eq!(fx.client.get_project_count(), 3);
     assert_eq!(fx.client.get_max_collaborators(), DEFAULT_MAX_COLLABORATORS);
@@ -242,7 +257,10 @@ fn v1_reads_work_before_any_migration() {
         assert_eq!(fx.client.get_balance(id), FUNDED);
         let info = fx.client.get_claimable(id, &fx.collabs[0]);
         assert_eq!(info.claimed, 0);
-        assert_eq!(info.last_claim_amount, 0, "missing LastClaimAmount reads as 0");
+        assert_eq!(
+            info.last_claim_amount, 0,
+            "missing LastClaimAmount reads as 0"
+        );
         assert_eq!(info.distribution_round, 0);
     }
     assert!(!fx.has_accounting_cache());
@@ -255,9 +273,13 @@ fn v1_reads_work_before_any_migration() {
 
 #[test]
 fn first_deposit_after_upgrade_seeds_accounting_from_all_projects() {
-    for build in [Fixture::v1_flat_index, Fixture::v2_pre_accounting] {
+    // Each layout gets its own `env`; the fixture borrows it for one iteration.
+    for layout in ["v1_flat_index", "v2_pre_accounting"] {
         let env = Env::default();
-        let fx = build(&env, 3);
+        let fx = match layout {
+            "v1_flat_index" => Fixture::v1_flat_index(&env, 3),
+            _ => Fixture::v2_pre_accounting(&env, 3),
+        };
         fx.deposit(&fx.projects[0], 5_0000000);
 
         assert!(fx.has_accounting_cache());
@@ -265,7 +287,8 @@ fn first_deposit_after_upgrade_seeds_accounting_from_all_projects() {
         // balance as unallocated and let the admin withdraw it.
         fx.assert_no_project_funds_unallocated(0);
         assert_eq!(
-            fx.client.try_withdraw_unallocated(&fx.admin, &fx.token, &fx.admin, &1),
+            fx.client
+                .try_withdraw_unallocated(&fx.admin, &fx.token, &fx.admin, &1),
             Err(Ok(SplitError::InsufficientUnallocated))
         );
     }
@@ -294,13 +317,15 @@ fn withdraw_unallocated_recovers_only_stray_tokens_on_prior_state() {
 
     fx.assert_no_project_funds_unallocated(stray);
     assert_eq!(
-        fx.client.try_withdraw_unallocated(&fx.admin, &fx.token, &fx.admin, &(stray + 1)),
+        fx.client
+            .try_withdraw_unallocated(&fx.admin, &fx.token, &fx.admin, &(stray + 1)),
         Err(Ok(SplitError::InsufficientUnallocated)),
         "must not dip into project funds"
     );
 
     let balances_before = fx.total_project_balances();
-    fx.client.withdraw_unallocated(&fx.admin, &fx.token, &fx.admin, &stray);
+    fx.client
+        .withdraw_unallocated(&fx.admin, &fx.token, &fx.admin, &stray);
     assert_eq!(fx.total_project_balances(), balances_before);
     fx.assert_no_project_funds_unallocated(0);
 }
@@ -324,12 +349,20 @@ fn distribute_on_prior_state_matches_fresh_deployment() {
         assert_eq!(project.distribution_round, 1);
         assert_eq!(project.total_distributed, total);
         assert_eq!(fx.client.get_balance(id), 0);
-        let claimed: i128 = fx.collabs.iter().map(|c| fx.client.get_claimed(id, c)).sum();
+        let claimed: i128 = fx
+            .collabs
+            .iter()
+            .map(|c| fx.client.get_claimed(id, c))
+            .sum();
         assert_eq!(claimed, total);
     }
     for i in 0..2 {
         let paid = |fx: &Fixture| fx.client.get_claimed(&fx.projects[0], &fx.collabs[i]);
-        assert_eq!(paid(&legacy), paid(&fresh), "collaborator {i} payout differs after upgrade");
+        assert_eq!(
+            paid(&legacy),
+            paid(&fresh),
+            "collaborator {i} payout differs after upgrade"
+        );
     }
     legacy.assert_no_project_funds_unallocated(0);
 }
@@ -347,9 +380,17 @@ fn claim_on_state_without_claim_epochs_allows_one_claim_per_epoch() {
         Err(Ok(SplitError::AlreadyClaimed)),
         "missing ClaimEpoch must still block a duplicate claim"
     );
-    assert_eq!(fx.client.get_claimable(id, &fx.collabs[0]).last_claim_amount, paid);
+    assert_eq!(
+        fx.client
+            .get_claimable(id, &fx.collabs[0])
+            .last_claim_amount,
+        paid
+    );
     fx.deposit(id, 10_0000000);
-    assert!(fx.client.try_claim(id, &fx.collabs[0]).is_ok(), "a deposit opens a new epoch");
+    assert!(
+        fx.client.try_claim(id, &fx.collabs[0]).is_ok(),
+        "a deposit opens a new epoch"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -367,7 +408,11 @@ fn create_project_on_flat_index_migrates_inline_without_hiding_legacy_ids() {
     assert_eq!(fx.all_ids(), expected);
     assert!(!fx.has_flat_index());
     assert_eq!(fx.client.get_project_count(), 4);
-    assert_eq!(fx.client.get_project_ids(&3, &1).get(0).unwrap(), new_id, "index position matches ProjectCount");
+    assert_eq!(
+        fx.client.get_project_ids(&3, &1).get(0).unwrap(),
+        new_id,
+        "index position matches ProjectCount"
+    );
 }
 
 #[test]
@@ -413,14 +458,25 @@ fn migration_fills_bucket_boundaries_exactly() {
         for i in 1..legacy_len {
             ids.push(Symbol::new(&env, &std::format!("idx_{i}")));
         }
-        fx.storage(|| env.storage().persistent().set(&DataKey::ProjectIds, &fx.id_vec(&ids)));
+        fx.storage(|| {
+            env.storage()
+                .persistent()
+                .set(&DataKey::ProjectIds, &fx.id_vec(&ids))
+        });
 
         fx.client.migrate_flat_to_buckets(&fx.admin);
 
         let buckets: u32 = fx.storage(|| {
-            env.storage().persistent().get(&DataKey::ProjectIdsBucketCount).unwrap_or(0)
+            env.storage()
+                .persistent()
+                .get(&DataKey::ProjectIdsBucketCount)
+                .unwrap_or(0)
         });
-        assert_eq!(buckets, (legacy_len - 1) / PROJECT_ID_BUCKET_SIZE + 1, "len={legacy_len}");
+        assert_eq!(
+            buckets,
+            (legacy_len - 1) / PROJECT_ID_BUCKET_SIZE + 1,
+            "len={legacy_len}"
+        );
         assert_eq!(fx.all_ids(), ids, "len={legacy_len}");
     }
 }
@@ -429,7 +485,11 @@ fn migration_fills_bucket_boundaries_exactly() {
 fn empty_flat_index_migrates_to_nothing() {
     let env = Env::default();
     let fx = Fixture::v1_flat_index(&env, 1);
-    fx.storage(|| env.storage().persistent().set(&DataKey::ProjectIds, &Vec::<Symbol>::new(&env)));
+    fx.storage(|| {
+        env.storage()
+            .persistent()
+            .set(&DataKey::ProjectIds, &Vec::<Symbol>::new(&env))
+    });
 
     fx.client.migrate_flat_to_buckets(&fx.admin);
     assert!(!fx.has_flat_index());
@@ -446,6 +506,9 @@ fn non_admin_cannot_migrate_prior_state() {
         fx.client.try_migrate_flat_to_buckets(&attacker),
         Err(Ok(SplitError::Unauthorized))
     );
-    assert!(fx.has_flat_index(), "a rejected migration must not touch storage");
+    assert!(
+        fx.has_flat_index(),
+        "a rejected migration must not touch storage"
+    );
     assert_eq!(fx.all_ids(), fx.projects);
 }

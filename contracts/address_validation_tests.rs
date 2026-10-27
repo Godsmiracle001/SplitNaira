@@ -373,7 +373,9 @@ fn create_project_with_overallocated_split_returns_invalid_split() {
         &token,
         &id,
         &collaborators,
-        SplitError::ArithmeticOverflow,
+        // 13,000 bps does not overflow u32; the documented error for a split
+        // that does not sum to 10,000 is InvalidSplit (see create_project).
+        SplitError::InvalidSplit,
     );
 }
 
