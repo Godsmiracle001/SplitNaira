@@ -1,12 +1,9 @@
-"use client";
+import { setRequestLocale } from "next-intl/server";
 
-import { SplitApp } from "@/components/split-app";
-import { PageTransition } from "@/components/page-transition";
+import { LandingPage } from "@/components/landing/LandingPage";
 
-export default function Home() {
-  return (
-    <PageTransition motionKey="home">
-      <SplitApp />
-    </PageTransition>
-  );
+export default async function Home({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  return <LandingPage />;
 }

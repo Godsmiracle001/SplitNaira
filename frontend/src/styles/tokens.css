@@ -1,27 +1,70 @@
 /**
- * Design Tokens - Single Source of Truth for SplitNaira Brand
- * 
- * This file defines the canonical brand palette used throughout the application.
- * All colors are mapped into Tailwind config for consistent usage.
+ * Design tokens — single source of truth for the SplitNaira visual system.
+ *
+ * Tailwind v4 reads theme values from `@theme` in CSS (the JS
+ * tailwind.config.ts is not loaded without an `@config` directive). Every
+ * colour below therefore becomes a utility: `bg-surface`, `text-ink`,
+ * `border-line`, `text-primary`, …
+ *
+ * Palette: midnight navy surfaces, emerald for primary actions, warm
+ * off-white text, and a restrained gold accent. Text/surface pairs meet
+ * WCAG AA (ink on surface ≈ 16:1, muted on surface ≈ 7:1, white on
+ * primary-strong ≈ 5.5:1).
  */
 
+@theme {
+  /* Surfaces */
+  --color-surface: #0a1020;
+  --color-surface-raised: #111a2e;
+  --color-surface-overlay: #17223a;
+  --color-surface-sunken: #070c18;
+  --color-line: rgb(148 163 184 / 0.16);
+  --color-line-strong: rgb(148 163 184 / 0.3);
+
+  /* Text */
+  --color-ink: #f5f2ea;
+  --color-muted: #9aa6b8;
+  --color-subtle: #6b778b;
+
+  /* Brand */
+  --color-primary: #34d399;
+  --color-primary-strong: #047857;
+  --color-primary-soft: rgb(52 211 153 / 0.12);
+  --color-accent: #e9b949;
+  --color-accent-soft: rgb(233 185 73 / 0.12);
+
+  /* Status */
+  --color-success: #34d399;
+  --color-warning: #f5b84a;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
+
+  /* Legacy aliases still used by existing components */
+  --color-greenBright: #34d399;
+  --color-greenMid: #047857;
+  --color-goldLight: #e9b949;
+
+  /* Type */
+  --font-sans: var(--font-sans-family), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-family), ui-sans-serif, system-ui, sans-serif;
+
+  /* Shape and depth */
+  --radius-card: 1.25rem;
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -16px rgb(0 0 0 / 0.6);
+  --shadow-pop: 0 24px 64px -24px rgb(0 0 0 / 0.75);
+}
+
 :root {
-  /* Brand Primary Colors */
-  --brand-primary: #1d5c3a; /* Logo green */
-  --brand-accent: #d49a2a; /* Gold accent */
+  color-scheme: dark;
 
-  /* Surface & Layout */
-  --brand-surface: #0a0a09; /* Dark background */
-  --brand-card: rgba(23, 23, 20, 0.8);
-  --brand-border: rgba(255, 255, 255, 0.08);
-
-  /* Text Colors */
-  --brand-text: #f9f7f2; /* Primary text (ink) */
-  --brand-muted: #a1a19a; /* Secondary text */
-
-  /* Interactive States */
-  --brand-highlight: #34d399; /* Success/active state */
-
-  /* Glass Effects */
-  --glass-border: rgba(255, 255, 255, 0.08);
+  /* Raw values kept for CSS that does not go through Tailwind utilities */
+  --brand-primary: var(--color-primary-strong);
+  --brand-accent: var(--color-accent);
+  --brand-surface: var(--color-surface);
+  --brand-card: var(--color-surface-raised);
+  --brand-border: var(--color-line);
+  --brand-text: var(--color-ink);
+  --brand-muted: var(--color-muted);
+  --brand-highlight: var(--color-primary);
+  --glass-border: var(--color-line);
 }

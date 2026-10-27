@@ -1,6 +1,20 @@
 "use client";
 
+import { useMemo, type ReactNode } from "react";
 import { clsx } from "clsx";
+import {
+  ArrowUpRight,
+  Coins,
+  ExternalLink,
+  FolderKanban,
+  PauseCircle,
+  PlayCircle,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  Wallet,
+} from "lucide-react";
+
 import { sanitizeText } from "@/lib/security";
 import type { SplitProject } from "@/lib/stellar";
 import type {
@@ -9,7 +23,12 @@ import type {
   AdminStatusState,
 } from "@/lib/api";
 import type { WalletState } from "@/lib/wallet";
-import { SummaryCardSkeleton, Skeleton } from "../Skeleton";
+import { getTransactionExplorerUrl } from "@/lib/explorer";
+import { formatStroops, toBigIntAmount } from "@/lib/amounts";
+import { getTokenById } from "@/lib/token-constants";
+import { Button } from "../Button";
+import { Card, SectionHeader, StatCard, StatusBadge } from "../ui/Card";
+import { Skeleton } from "../Skeleton";
 import { ProjectCard } from "../ProjectCard";
 
 export interface AllowlistActionResult {
@@ -17,6 +36,8 @@ export interface AllowlistActionResult {
   token: string;
   txHash: string | null;
 }
+
+type Tab = "dashboard" | "create" | "manage" | "projects";
 
 interface DashboardViewProps {
   wallet: WalletState;
@@ -28,7 +49,7 @@ interface DashboardViewProps {
   setAllowlistTokenInput: (val: string) => void;
   isValidAllowlistToken: boolean;
   normalizedAllowlistToken: string;
-  onSubmitAllowlistAction: (action: "allow" | "disallow") => Promise<void>;
+  onSubmitAllowlistAction: (action: "allow" | "disallow") => Promise<unknown>;
   lastAllowlistTx: AllowlistActionResult | null;
   refreshTokenAllowlist: () => Promise<unknown>;
   isLoadingDashboard: boolean;
@@ -43,7 +64,7 @@ interface DashboardViewProps {
   setShowUnpauseConfirm: (val: boolean) => void;
   isSubmittingPause: boolean;
   lastPauseTxHash: string | null;
-  onTogglePause: (action: "pause" | "unpause") => Promise<void>;
+  onTogglePause: (action: "pause" | "unpause") => Promise<unknown>;
   recoveryTokenInput: string;
   setRecoveryTokenInput: (val: string) => void;
   isLoadingUnallocated: boolean;
@@ -57,12 +78,94 @@ interface DashboardViewProps {
   showRecoveryConfirm: boolean;
   setShowRecoveryConfirm: (val: boolean) => void;
   isSubmittingRecovery: boolean;
-  onConfirmRecovery: () => Promise<void>;
+  onConfirmRecovery: () => Promise<unknown>;
   lastRecoveryTxHash: string | null;
-  setActiveTab: (tab: "dashboard" | "create" | "manage" | "projects") => void;
+  setActiveTab: (tab: Tab) => void;
   setSearchProjectId: (val: string) => void;
   setFetchedProject: (p: SplitProject | null) => void;
+  /** Builds explorer links; returns null for an unsupported network so no wrong-chain link is shown. */
+  getExplorerUrl?: (hash: string, network: string | null) => string | null;
 }
+
+/** Short label for a token contract: its preset code when known, else a truncated address. */
+function tokenLabel(token: string): string {
+  const known = getTokenById(token);
+  if (known) return known.code;
+  return token.length > 12 ? `${token.slice(0, 4)}…${token.slice(-4)}` : token;
+}
+
+/** Sums an amount field per token. Amounts of different tokens are never added together. */
+function sumByToken(
+  projects: SplitProject[],
+  amountOf: (project: SplitProject) => string | number | null | undefined,
+): Array<{ token: string; total: bigint }> {
+  const totals = new Map<string, bigint>();
+  for (const project of projects) {
+    totals.set(project.token, (totals.get(project.token) ?? 0n) + toBigIntAmount(amountOf(project)));
+  }
+  return Array.from(totals, ([token, total]) => ({ token, total }));
+}
+
+function TokenTotals({ totals }: { totals: Array<{ token: string; total: bigint }> }) {
+  if (totals.length === 0) return <>0</>;
+  if (totals.length === 1) {
+    return (
+      <>
+        {formatStroops(totals[0].total)}{" "}
+        <span className="font-sans text-sm font-normal text-muted">{tokenLabel(totals[0].token)}</span>
+      </>
+    );
+  }
+  return <>{totals.length} tokens</>;
+}
+
+function TokenBreakdown({ totals }: { totals: Array<{ token: string; total: bigint }> }) {
+  if (totals.length < 2) return null;
+  return (
+    <ul className="space-y-0.5">
+      {totals.map(({ token, total }) => (
+        <li key={token} className="flex justify-between gap-3 tabular-nums">
+          <span className="font-mono">{tokenLabel(token)}</span>
+          <span>{formatStroops(total)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ConfirmedTx({
+  title,
+  children,
+  txHash,
+  explorerUrl,
+}: {
+  title: string;
+  children?: ReactNode;
+  txHash: string;
+  explorerUrl: string | null;
+}) {
+  return (
+    <div role="status" className="rounded-xl border border-success/25 bg-success/5 p-4">
+      <p className="text-sm font-semibold text-success">{title}</p>
+      {children && <div className="mt-1 text-sm text-muted">{children}</div>}
+      <p className="mt-2 break-all font-mono text-xs text-subtle">Tx: {txHash}</p>
+      {explorerUrl && (
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary underline-offset-4 hover:underline"
+        >
+          View on Explorer <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+        </a>
+      )}
+    </div>
+  );
+}
+
+const fieldClass =
+  "glass-input mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm font-mono disabled:opacity-50";
+const labelClass = "text-xs font-medium text-muted";
 
 export function DashboardView({
   wallet,
@@ -83,13 +186,10 @@ export function DashboardView({
   adminStatus,
   isLoadingAdminStatus,
   refreshAdminStatus,
-  showPauseConfirm: _showPauseConfirm,
   setShowPauseConfirm,
-  showUnpauseConfirm: _showUnpauseConfirm,
   setShowUnpauseConfirm,
   isSubmittingPause,
   lastPauseTxHash,
-  onTogglePause: _onTogglePause,
   recoveryTokenInput,
   setRecoveryTokenInput,
   isLoadingUnallocated,
@@ -105,542 +205,505 @@ export function DashboardView({
   isSubmittingRecovery,
   onConfirmRecovery,
   lastRecoveryTxHash,
+  setActiveTab,
+  setSearchProjectId,
+  setFetchedProject,
+  getExplorerUrl = getTransactionExplorerUrl,
 }: DashboardViewProps) {
+  const explorerUrl = (hash: string) => getExplorerUrl(hash, wallet.network);
+
+  const balances = useMemo(() => sumByToken(dashboardData, (p) => p.balance), [dashboardData]);
+  const distributed = useMemo(
+    () => sumByToken(dashboardData, (p) => p.totalDistributed),
+    [dashboardData],
+  );
+  const myProjects = useMemo(
+    () =>
+      wallet.address
+        ? dashboardData.filter((p) => p.collaborators.some((c) => c.address === wallet.address))
+        : [],
+    [dashboardData, wallet.address],
+  );
+  const myEarnings = useMemo(
+    () => sumByToken(myProjects, (p) => userEarnings[p.projectId]),
+    [myProjects, userEarnings],
+  );
+
+  const openProject = (project: SplitProject) => {
+    setSearchProjectId(project.projectId);
+    setFetchedProject(project);
+    setActiveTab("manage");
+  };
+
+  const unallocatedUnits = unallocatedBalance ? toBigIntAmount(unallocatedBalance.unallocated) : 0n;
+  const recoveryUnits = /^\d+$/.test(recoveryAmountInput.trim())
+    ? BigInt(recoveryAmountInput.trim())
+    : null;
+  const canReviewRecovery =
+    Boolean(recoveryToInput.trim()) &&
+    recoveryUnits !== null &&
+    recoveryUnits > 0n &&
+    recoveryUnits <= unallocatedUnits;
+
   return (
-    <div className="space-y-10 animate-in fade-in duration-700">
-      <div className="grid gap-6 md:grid-cols-3">
+    <div className="space-y-8">
+      {/* Summary */}
+      <section aria-label="Summary" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {isLoadingDashboard ? (
-          Array(3)
-            .fill(0)
-            .map((_, i) => <SummaryCardSkeleton key={i} />)
+          Array.from({ length: 4 }, (_, i) => (
+            <Card key={i} className="space-y-3 p-5">
+              <Skeleton variant="line" className="w-1/2" />
+              <Skeleton variant="line" className="h-8 w-3/4" />
+            </Card>
+          ))
         ) : (
           <>
-            <div className="glass-card rounded-3xl p-8 border-l-4 border-greenBright">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">
-                Total Managed
-              </p>
-              <p className="text-3xl font-display">
-                {dashboardData.length}{" "}
-                <span className="text-sm font-sans text-muted">Projects</span>
-              </p>
-            </div>
-            <div className="glass-card rounded-3xl p-8 border-l-4 border-goldLight">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">
-                Platform Treasury
-              </p>
-              <p className="text-3xl font-display text-greenBright">
-                {dashboardData
-                  .reduce((s, p) => s + Number(p.balance), 0)
-                  .toLocaleString()}{" "}
-                <span className="text-sm font-sans text-muted">Stroops</span>
-              </p>
-            </div>
-            <div className="glass-card rounded-3xl p-8 border-l-4 border-white/20">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-2">
-                Lifetime Payouts
-              </p>
-              <p className="text-3xl font-display">
-                {dashboardData
-                  .reduce((s, p) => s + Number(p.totalDistributed), 0)
-                  .toLocaleString()}
-              </p>
-            </div>
+            <StatCard
+              label="Projects"
+              value={<span>{dashboardData.length}</span>}
+              icon={<FolderKanban className="h-4 w-4" />}
+              hint="Split projects on the configured contract."
+            />
+            <StatCard
+              label="Held for payout"
+              value={<TokenTotals totals={balances} />}
+              icon={<Coins className="h-4 w-4" />}
+              hint={
+                balances.length > 1 ? <TokenBreakdown totals={balances} /> : "Deposited and not yet distributed."
+              }
+            />
+            <StatCard
+              label="Distributed to date"
+              value={<TokenTotals totals={distributed} />}
+              icon={<ArrowUpRight className="h-4 w-4" />}
+              hint={<TokenBreakdown totals={distributed} />}
+            />
+            <StatCard
+              label="Your earnings"
+              value={wallet.connected ? <TokenTotals totals={myEarnings} /> : "—"}
+              icon={<Wallet className="h-4 w-4" />}
+              hint={
+                wallet.connected
+                  ? `Claimed across ${myProjects.length} project${myProjects.length === 1 ? "" : "s"} you are part of.`
+                  : "Connect a wallet to see your share."
+              }
+            />
           </>
         )}
-      </div>
+      </section>
 
-      {wallet.connected && isContractAdmin && tokenAllowlist && (
-        isLoadingDashboard ? (
-          <div className="glass-card rounded-[2.5rem] p-8 md:p-10 border border-greenBright/10">
-            <SummaryCardSkeleton />
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-greenBright/80">
-                Admin Control Plane
-              </p>
-              <h2 className="font-display text-2xl tracking-tight">Admin Token Allowlist</h2>
-              <p className="max-w-2xl text-sm text-muted">
-                Inspect the live allowlist and submit contract-backed allow or disallow actions from the connected admin wallet.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => { void refreshTokenAllowlist(); }}
-              disabled={isLoadingAllowlist || isUpdatingAllowlist}
-              className="premium-button rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted hover:text-ink disabled:opacity-40"
-            >
-              {isLoadingAllowlist ? "Refreshing..." : "Refresh State"}
-            </button>
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-3xl border border-white/5 bg-white/2 p-5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Contract Admin</p>
-              <p className="mt-3 break-all font-mono text-xs text-ink">{tokenAllowlist.admin}</p>
-            </div>
-            <div className="rounded-3xl border border-white/5 bg-white/2 p-5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Allowlist Mode</p>
-              <p className="mt-3 text-2xl font-display text-greenBright">
-                {tokenAllowlist.allowedTokenCount > 0 ? "Active" : "Open"}
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                {tokenAllowlist.allowedTokenCount > 0
-                  ? "New splits are restricted to the listed token addresses."
-                  : "No tokens are listed, so any token address can be used."}
-              </p>
-            </div>
-            <div className="rounded-3xl border border-white/5 bg-white/2 p-5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Listed Tokens</p>
-              <p className="mt-3 text-2xl font-display">{tokenAllowlist.allowedTokenCount}</p>
-              <p className="mt-1 text-xs text-muted">
-                Current page contains {tokenAllowlist.tokens.length} token address{tokenAllowlist.tokens.length === 1 ? "" : "es"}.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-8 rounded-[2rem] border border-white/5 bg-white/2 p-6">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-              <div className="space-y-2">
-                <label
-                  htmlFor="allowlist-token-input"
-                  className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted"
-                >
-                  Token Contract Address
-                </label>
-                <input
-                  id="allowlist-token-input"
-                  value={allowlistTokenInput}
-                  onChange={(event) => setAllowlistTokenInput(event.target.value)}
-                  placeholder="Enter token address to allow or disallow"
-                  disabled={isUpdatingAllowlist}
-                  className={clsx(
-                    "glass-input w-full rounded-2xl px-5 py-4 text-sm",
-                    normalizedAllowlistToken && !isValidAllowlistToken
-                      ? "border-red-500/50 bg-red-500/5"
-                      : "",
-                  )}
-                />
-                {normalizedAllowlistToken && !isValidAllowlistToken && (
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">
-                    Enter a valid Stellar account or contract address.
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => { void onSubmitAllowlistAction("allow"); }}
-                disabled={isUpdatingAllowlist || !isValidAllowlistToken}
-                className="premium-button self-end rounded-2xl bg-greenBright px-6 py-4 text-[10px] font-black uppercase tracking-[0.3em] text-[#0a0a09] disabled:opacity-30"
-              >
-                {isUpdatingAllowlist ? "Submitting..." : "Allow Token"}
-              </button>
-              <button
-                type="button"
-                onClick={() => { void onSubmitAllowlistAction("disallow"); }}
-                disabled={isUpdatingAllowlist || !isValidAllowlistToken}
-                className="premium-button self-end rounded-2xl border border-red-400/30 bg-red-500/10 px-6 py-4 text-[10px] font-black uppercase tracking-[0.3em] text-red-300 disabled:opacity-30"
-              >
-                {isUpdatingAllowlist ? "Submitting..." : "Disallow Token"}
-              </button>
-            </div>
-          </div>
-
-          {lastAllowlistTx && (
-            <div className="mt-6 rounded-2xl border border-greenBright/20 bg-greenBright/5 p-5">
-              <div className="flex items-start gap-4">
-                <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-greenBright/10">
-                  <svg className="h-5 w-5 text-greenBright" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-greenBright">
-                    {lastAllowlistTx.action === "allow" ? "Allowlist updated" : "Allowlist removal confirmed"}
-                  </h3>
-                  <p className="text-sm text-muted">
-                    {lastAllowlistTx.action === "allow" ? "Allowed" : "Disallowed"} token{" "}
-                    <span className="font-mono text-ink">{lastAllowlistTx.token}</span>.
-                  </p>
-                  {lastAllowlistTx.txHash && (
-                    <>
-                      <p className="font-mono text-[10px] text-muted break-all opacity-80">
-                        Tx: {lastAllowlistTx.txHash}
-                      </p>
-                      <a
-                        href={`https://stellar.expert/explorer/testnet/tx/${lastAllowlistTx.txHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block pt-1 text-[10px] font-bold text-greenBright underline underline-offset-4 hover:text-white"
-                      >
-                        View on Explorer →
-                      </a>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-8 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted">
-                Current Allowed Tokens
-              </h3>
-              <span className="rounded-full bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-muted">
-                {tokenAllowlist.allowedTokenCount} total
-              </span>
-            </div>
-            {tokenAllowlist.tokens.length > 0 ? (
-              <div className="space-y-3">
-                {tokenAllowlist.tokens.map((allowedToken) => (
-                  <div key={allowedToken} className="rounded-2xl border border-white/5 bg-white/2 px-5 py-4">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-greenBright/70">Allowed Token</p>
-                    <p className="mt-2 break-all font-mono text-xs text-ink">{allowedToken}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-white/2 px-5 py-6 text-sm text-muted">
-                No token addresses are allowlisted yet. The contract currently accepts any token address for new splits.
-              </div>
-            )}
-          </div>
+      {/* Quick actions */}
+      <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
+        <div>
+          <p className="font-medium text-ink">Start a new royalty split</p>
+          <p className="text-sm text-muted">
+            Agree shares with collaborators once; every deposit is paid out by the same rules.
+          </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => setActiveTab("projects")}>
+            Browse projects
+          </Button>
+          <Button onClick={() => setActiveTab("create")}>
+            <Plus aria-hidden="true" className="h-4 w-4" /> Create split
+          </Button>
+        </div>
+      </Card>
+
+      {/* Your projects */}
+      {wallet.connected && !isLoadingDashboard && myProjects.length > 0 && (
+        <Card className="space-y-5 p-6">
+          <SectionHeader
+            title="Projects you earn from"
+            description="Amounts are what you have received so far, from on-chain claim records."
+          />
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {myProjects.map((p) => (
+              <ProjectCard key={p.projectId} project={p} userEarnings={userEarnings[p.projectId] ?? "0"} />
+            ))}
+          </div>
+        </Card>
       )}
 
-      {/* Emergency / Unallocated recovery console */}
-      {wallet.connected && isContractAdmin && (
-        isLoadingDashboard ? (
-          <div className="glass-card rounded-[2.5rem] p-8 md:p-10 border border-goldLight/10">
-            <SummaryCardSkeleton />
+      {/* All projects */}
+      <Card className="p-6">
+        <SectionHeader
+          title="Project performance"
+          description="Live balances read from the contract. Amounts are in token units (1 unit = 10,000,000 stroops)."
+        />
+        {!isLoadingDashboard && dashboardData.length === 0 ? (
+          <div className="mt-6 rounded-xl border border-dashed border-line-strong p-8 text-center">
+            <p className="font-medium text-ink">No split projects yet</p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+              Create the first project to define who gets paid and in what proportion.
+            </p>
+            <Button className="mt-4" onClick={() => setActiveTab("create")}>
+              <Plus aria-hidden="true" className="h-4 w-4" /> Create split
+            </Button>
           </div>
         ) : (
-          <div className="glass-card rounded-[2.5rem] p-8 md:p-10 border border-goldLight/10">
-          <div className="space-y-1 mb-8">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-goldLight/80">
-              Admin — Recovery Console
-            </p>
-            <h2 className="font-display text-2xl tracking-tight">Unallocated Token Recovery</h2>
-            <p className="max-w-2xl text-sm text-muted">
-              Inspect and safely recover tokens that were sent directly to the contract address
-              outside of any tracked project balance. This action never touches project-accounted funds.
-            </p>
+          <div className="custom-scrollbar mt-6 -mx-6 overflow-x-auto px-6">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <caption className="sr-only">Balances and payout rounds per project</caption>
+              <thead>
+                <tr className="border-b border-line text-xs font-medium uppercase tracking-[0.08em] text-muted">
+                  <th scope="col" className="pb-3 pr-4 font-medium">Project</th>
+                  <th scope="col" className="pb-3 pr-4 font-medium">Category</th>
+                  <th scope="col" className="pb-3 pr-4 text-right font-medium">Balance</th>
+                  <th scope="col" className="pb-3 pr-4 text-right font-medium">Distributed</th>
+                  <th scope="col" className="pb-3 pr-4 text-right font-medium">Rounds</th>
+                  <th scope="col" className="pb-3 font-medium"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {isLoadingDashboard
+                  ? Array.from({ length: 4 }, (_, i) => (
+                      <tr key={i}>
+                        {Array.from({ length: 6 }, (__, j) => (
+                          <td key={j} className="py-4 pr-4">
+                            <Skeleton variant="line" className="w-3/4" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  : dashboardData.map((p) => (
+                      <tr key={p.projectId} className="transition-colors hover:bg-surface-overlay/50">
+                        <td className="py-3.5 pr-4">
+                          <p className="font-medium text-ink">{sanitizeText(p.title)}</p>
+                          <p className="font-mono text-xs text-subtle">{p.projectId}</p>
+                        </td>
+                        <td className="py-3.5 pr-4">
+                          <span className="rounded-md bg-surface-overlay px-2 py-0.5 text-xs capitalize text-muted">
+                            {sanitizeText(p.projectType)}
+                          </span>
+                        </td>
+                        <td className="py-3.5 pr-4 text-right font-mono tabular-nums text-ink">
+                          {formatStroops(p.balance)} <span className="text-subtle">{tokenLabel(p.token)}</span>
+                        </td>
+                        <td className="py-3.5 pr-4 text-right font-mono tabular-nums text-muted">
+                          {formatStroops(p.totalDistributed)}
+                        </td>
+                        <td className="py-3.5 pr-4 text-right font-mono tabular-nums text-muted">
+                          {p.distributionRound}
+                        </td>
+                        <td className="py-3.5 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openProject(p)}
+                            aria-label={`Manage ${sanitizeText(p.title)}`}
+                          >
+                            Manage
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Admin: token allowlist */}
+      {wallet.connected && isContractAdmin && tokenAllowlist && (
+        <Card className="glass-card space-y-6 p-6">
+          <SectionHeader
+            eyebrow={<span className="inline-flex items-center gap-1.5"><ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" /> Admin</span>}
+            title="Admin Token Allowlist"
+            description="Choose which token contracts new splits may use. Changes are signed by the connected admin wallet."
+            action={
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  void refreshTokenAllowlist();
+                }}
+                disabled={isLoadingAllowlist || isUpdatingAllowlist}
+              >
+                <RefreshCw aria-hidden="true" className={clsx("h-3.5 w-3.5", isLoadingAllowlist && "animate-spin")} />
+                {isLoadingAllowlist ? "Refreshing…" : "Refresh"}
+              </Button>
+            }
+          />
+          <dl className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-line bg-surface-sunken p-4">
+              <dt className={labelClass}>Contract admin</dt>
+              <dd className="mt-2 break-all font-mono text-xs text-ink">{tokenAllowlist.admin ?? "Not set"}</dd>
+            </div>
+            <div className="rounded-xl border border-line bg-surface-sunken p-4">
+              <dt className={labelClass}>Mode</dt>
+              <dd className="mt-2">
+                <StatusBadge tone={tokenAllowlist.allowedTokenCount > 0 ? "success" : "neutral"}>
+                  {tokenAllowlist.allowedTokenCount > 0 ? "Restricted" : "Open"}
+                </StatusBadge>
+                <p className="mt-2 text-xs text-muted">
+                  {tokenAllowlist.allowedTokenCount > 0
+                    ? "New splits must use a listed token."
+                    : "No tokens listed, so any token address can be used."}
+                </p>
+              </dd>
+            </div>
+            <div className="rounded-xl border border-line bg-surface-sunken p-4">
+              <dt className={labelClass}>Listed tokens</dt>
+              <dd className="mt-2 font-display text-2xl tabular-nums">{tokenAllowlist.allowedTokenCount}</dd>
+            </div>
+          </dl>
+
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+            <div>
+              <label htmlFor="allowlist-token-input" className={labelClass}>
+                Token contract address
+              </label>
+              <input
+                id="allowlist-token-input"
+                value={allowlistTokenInput}
+                onChange={(event) => setAllowlistTokenInput(event.target.value)}
+                placeholder="Enter token address to allow or disallow"
+                disabled={isUpdatingAllowlist}
+                aria-invalid={Boolean(normalizedAllowlistToken) && !isValidAllowlistToken}
+                aria-describedby={normalizedAllowlistToken && !isValidAllowlistToken ? "allowlist-token-error" : undefined}
+                className={fieldClass}
+              />
+              {normalizedAllowlistToken && !isValidAllowlistToken && (
+                <p id="allowlist-token-error" className="mt-1.5 text-xs text-danger">
+                  Enter a valid Stellar account or contract address.
+                </p>
+              )}
+            </div>
+            <Button
+              onClick={() => {
+                void onSubmitAllowlistAction("allow");
+              }}
+              disabled={isUpdatingAllowlist || !isValidAllowlistToken}
+              loading={isUpdatingAllowlist}
+            >
+              Allow Token
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                void onSubmitAllowlistAction("disallow");
+              }}
+              disabled={isUpdatingAllowlist || !isValidAllowlistToken}
+            >
+              Disallow Token
+            </Button>
           </div>
 
-          <div className="space-y-4">
-            <label className="block">
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Recovery Token Address</span>
+          {lastAllowlistTx?.txHash && (
+            <ConfirmedTx
+              title={lastAllowlistTx.action === "allow" ? "Token allowed — confirmed on ledger" : "Token removed — confirmed on ledger"}
+              txHash={lastAllowlistTx.txHash}
+              explorerUrl={explorerUrl(lastAllowlistTx.txHash)}
+            >
+              <span className="break-all font-mono text-ink">{lastAllowlistTx.token}</span>
+            </ConfirmedTx>
+          )}
+
+          {tokenAllowlist.tokens.length > 0 ? (
+            <ul className="divide-y divide-line rounded-xl border border-line">
+              {tokenAllowlist.tokens.map((allowedToken) => (
+                <li key={allowedToken} className="break-all px-4 py-3 font-mono text-xs text-ink">
+                  {allowedToken}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-xl border border-dashed border-line-strong p-4 text-sm text-muted">
+              No token addresses are allowlisted yet.
+            </p>
+          )}
+        </Card>
+      )}
+
+      {/* Admin: distribution pause */}
+      {wallet.connected && isContractAdmin && (
+        <Card className="space-y-5 p-6">
+          <SectionHeader
+            eyebrow="Admin · Emergency control"
+            title="Distribution pause"
+            description="Stops payouts on every project until resumed. Deposits and balances are not affected."
+            action={
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  void refreshAdminStatus();
+                }}
+                disabled={isLoadingAdminStatus}
+              >
+                <RefreshCw aria-hidden="true" className={clsx("h-3.5 w-3.5", isLoadingAdminStatus && "animate-spin")} />
+                {isLoadingAdminStatus ? "Refreshing…" : "Refresh"}
+              </Button>
+            }
+          />
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-surface-sunken p-4">
+            <div className="space-y-1">
+              {adminStatus ? (
+                <StatusBadge tone={adminStatus.isPaused ? "warning" : "success"}>
+                  {adminStatus.isPaused ? "Paused" : "Running"}
+                </StatusBadge>
+              ) : (
+                <StatusBadge tone="neutral">Unknown</StatusBadge>
+              )}
+              <p className="text-sm text-muted">
+                {adminStatus
+                  ? adminStatus.isPaused
+                    ? "The contract rejects every distribution call."
+                    : "Distributions are processed normally."
+                  : "Status could not be read from the contract."}
+              </p>
+            </div>
+            {adminStatus && !adminStatus.isPaused ? (
+              <Button
+                variant="danger"
+                onClick={() => setShowPauseConfirm(true)}
+                disabled={isSubmittingPause || isLoadingAdminStatus}
+              >
+                <PauseCircle aria-hidden="true" className="h-4 w-4" /> Pause distributions
+              </Button>
+            ) : adminStatus ? (
+              <Button onClick={() => setShowUnpauseConfirm(true)} disabled={isSubmittingPause || isLoadingAdminStatus}>
+                <PlayCircle aria-hidden="true" className="h-4 w-4" /> Resume distributions
+              </Button>
+            ) : null}
+          </div>
+          {lastPauseTxHash && (
+            <ConfirmedTx
+              title="Pause state change confirmed on ledger"
+              txHash={lastPauseTxHash}
+              explorerUrl={explorerUrl(lastPauseTxHash)}
+            />
+          )}
+        </Card>
+      )}
+
+      {/* Admin: unallocated recovery */}
+      {wallet.connected && isContractAdmin && (
+        <Card className="space-y-5 p-6">
+          <SectionHeader
+            eyebrow="Admin · Recovery"
+            title="Unallocated token recovery"
+            description="Recover tokens sent directly to the contract outside any project. Project balances are never touched."
+          />
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+            <div>
+              <label htmlFor="recovery-token-input" className={labelClass}>
+                Token contract address
+              </label>
               <input
+                id="recovery-token-input"
                 type="text"
                 value={recoveryTokenInput}
                 onChange={(e) => setRecoveryTokenInput(e.target.value)}
-                placeholder="C..."
-                className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-ink placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-goldLight/30"
+                placeholder="C…"
+                className={fieldClass}
               />
-            </label>
-            <button
-              type="button"
-              onClick={onInspectUnallocated}
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                void onInspectUnallocated();
+              }}
               disabled={isLoadingUnallocated || !recoveryTokenInput.trim()}
-              className="rounded-xl border border-goldLight/30 bg-goldLight/10 px-6 py-2.5 text-xs font-bold uppercase tracking-widest text-goldLight transition-all hover:bg-goldLight/20 disabled:opacity-40"
+              loading={isLoadingUnallocated}
             >
-              {isLoadingUnallocated ? "Inspecting…" : "Inspect Unallocated Balance"}
-            </button>
+              Check balance
+            </Button>
+          </div>
 
-            {unallocatedError && (
-              <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                {unallocatedError}
-              </p>
-            )}
+          {unallocatedError && (
+            <p role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+              {unallocatedError}
+            </p>
+          )}
 
-            {unallocatedBalance && (
-              <div className="rounded-2xl border border-goldLight/20 bg-goldLight/5 p-6 space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-goldLight/80">Recoverable Balance</p>
-                    <p className="font-mono text-2xl font-bold text-goldLight">
-                      {Number(unallocatedBalance.unallocated).toLocaleString()}{" "}
-                      <span className="text-sm font-sans text-muted">Stroops</span>
-                    </p>
+          {unallocatedBalance && (
+            <div className="space-y-4 rounded-xl border border-line bg-surface-sunken p-4">
+              <div>
+                <p className={labelClass}>Recoverable</p>
+                <p className="mt-1 font-display text-2xl tabular-nums text-ink">
+                  {unallocatedUnits.toLocaleString()}{" "}
+                  <span className="font-sans text-sm text-muted">stroops ({formatStroops(unallocatedUnits)} tokens)</span>
+                </p>
+              </div>
+
+              {unallocatedUnits > 0n && !showRecoveryConfirm && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="recovery-to-input" className={labelClass}>
+                      Destination address
+                    </label>
+                    <input
+                      id="recovery-to-input"
+                      type="text"
+                      value={recoveryToInput}
+                      onChange={(e) => setRecoveryToInput(e.target.value)}
+                      placeholder="G… or C…"
+                      className={fieldClass}
+                    />
                   </div>
-                  <div className="text-right space-y-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Token</p>
-                    <p className="font-mono text-[11px] text-muted break-all max-w-[200px]">{unallocatedBalance.token}</p>
+                  <div>
+                    <label htmlFor="recovery-amount-input" className={labelClass}>
+                      Amount (stroops)
+                    </label>
+                    <input
+                      id="recovery-amount-input"
+                      inputMode="numeric"
+                      value={recoveryAmountInput}
+                      onChange={(e) => setRecoveryAmountInput(e.target.value)}
+                      className={fieldClass}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Button variant="secondary" onClick={() => setShowRecoveryConfirm(true)} disabled={!canReviewRecovery}>
+                      Review recovery
+                    </Button>
                   </div>
                 </div>
-
-                {Number(unallocatedBalance.unallocated) > 0 && !showRecoveryConfirm && (
-                  <div className="space-y-3 pt-2 border-t border-white/5">
-                    <label className="block">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Destination Address</span>
-                      <input
-                        type="text"
-                        value={recoveryToInput}
-                        onChange={(e) => setRecoveryToInput(e.target.value)}
-                        placeholder="G... or C..."
-                        className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-ink placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-goldLight/30"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Amount (Stroops)</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={Number(unallocatedBalance.unallocated)}
-                        value={recoveryAmountInput}
-                        onChange={(e) => setRecoveryAmountInput(e.target.value)}
-                        className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-ink placeholder:text-muted/40 focus:outline-none focus:ring-2 focus:ring-goldLight/30"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!recoveryToInput.trim() || !recoveryAmountInput || Number(recoveryAmountInput) <= 0) {
-                          return;
-                        }
-                        setShowRecoveryConfirm(true);
-                      }}
-                      className="rounded-xl bg-goldLight/20 px-6 py-2.5 text-xs font-bold uppercase tracking-widest text-goldLight transition-all hover:bg-goldLight/30"
-                    >
-                      Review Recovery
-                    </button>
-                  </div>
-                )}
-
-                {showRecoveryConfirm && (
-                  <div className="space-y-4 rounded-2xl border border-goldLight/30 bg-black/30 p-6 pt-4">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-goldLight">
-                      Confirm Recovery — Review Before Submitting
-                    </h3>
-                    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                      <dt className="text-muted">Token</dt>
-                      <dd className="font-mono text-[11px] break-all">{unallocatedBalance.token}</dd>
-                      <dt className="text-muted">Destination</dt>
-                      <dd className="font-mono text-[11px] break-all">{recoveryToInput}</dd>
-                      <dt className="text-muted">Amount</dt>
-                      <dd className="font-mono font-bold text-goldLight">{Number(recoveryAmountInput).toLocaleString()} Stroops</dd>
-                      <dt className="text-muted">Remaining After</dt>
-                      <dd className="font-mono">
-                        {(Number(unallocatedBalance.unallocated) - Number(recoveryAmountInput)).toLocaleString()} Stroops
-                      </dd>
-                    </dl>
-                    <p className="text-[11px] text-muted/70 italic">
-                      This action only withdraws the unallocated surplus. Project-accounted balances are never touched.
-                    </p>
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={onConfirmRecovery}
-                        disabled={isSubmittingRecovery}
-                        className="rounded-xl bg-goldLight/30 px-6 py-2.5 text-xs font-bold uppercase tracking-widest text-goldLight transition-all hover:bg-goldLight/40 disabled:opacity-40"
-                      >
-                        {isSubmittingRecovery ? "Submitting…" : "Confirm & Submit"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowRecoveryConfirm(false)}
-                        className="rounded-xl border border-white/10 px-6 py-2.5 text-xs font-bold uppercase tracking-widest text-muted transition-all hover:text-ink"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {lastRecoveryTxHash && (
-              <div className="rounded-2xl border border-greenBright/20 bg-greenBright/5 p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-greenBright mb-2">Recovery Submitted</p>
-                <p className="font-mono text-[11px] text-muted break-all">Tx: {lastRecoveryTxHash}</p>
-                <a
-                  href={`https://stellar.expert/explorer/testnet/tx/${lastRecoveryTxHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-block text-[10px] font-bold text-greenBright underline underline-offset-4 hover:text-white"
-                >
-                  View on Explorer →
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Issue #165: Distribution Pause Control Plane */}
-      {wallet.connected && isContractAdmin && (
-        isLoadingDashboard ? (
-          <div className="glass-card rounded-[2.5rem] p-8 md:p-10 border border-red-500/10">
-            <SummaryCardSkeleton />
-          </div>
-        ) : (
-          <div className="glass-card rounded-[2.5rem] p-8 md:p-10 border border-red-500/10">
-          <div className="flex flex-wrap items-start justify-between gap-6 mb-8">
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-400/80">
-                Admin — Emergency Controls
-              </p>
-              <h2 className="font-display text-2xl tracking-tight">Distribution Pause Control</h2>
-              <p className="max-w-2xl text-sm text-muted">
-                Pause or resume all distributions across every project. This is a global emergency stop — use with care.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => { void refreshAdminStatus(); }}
-              disabled={isLoadingAdminStatus}
-              className="premium-button rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted hover:text-ink disabled:opacity-40"
-            >
-              {isLoadingAdminStatus ? "Refreshing..." : "Refresh State"}
-            </button>
-          </div>
-
-          <div
-            className="rounded-3xl border p-6 mb-6 flex items-center justify-between gap-4"
-            style={{ borderColor: adminStatus?.isPaused ? "rgba(251,191,36,0.3)" : "rgba(255,255,255,0.05)" }}
-          >
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Current State</p>
-              {adminStatus ? (
-                <p className={`text-2xl font-display ${adminStatus.isPaused ? "text-amber-400" : "text-greenBright"}`}>
-                  {adminStatus.isPaused ? "⏸ Paused" : "▶ Active"}
-                </p>
-              ) : (
-                <p className="text-sm text-muted italic">Loading…</p>
               )}
-              <p className="text-xs text-muted">
-                {adminStatus?.isPaused
-                  ? "All distribution calls will be rejected by the contract."
-                  : "Distributions are running normally."}
-              </p>
-            </div>
-          </div>
 
-          <div className="flex flex-wrap gap-3">
-            {!adminStatus?.isPaused ? (
-              <button
-                type="button"
-                onClick={() => setShowPauseConfirm(true)}
-                disabled={isSubmittingPause || isLoadingAdminStatus}
-                className="premium-button rounded-2xl border border-amber-400/30 bg-amber-400/10 px-6 py-4 text-[10px] font-black uppercase tracking-[0.3em] text-amber-300 disabled:opacity-30"
-              >
-                Pause Distributions
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowUnpauseConfirm(true)}
-                disabled={isSubmittingPause || isLoadingAdminStatus}
-                className="premium-button rounded-2xl bg-greenBright px-6 py-4 text-[10px] font-black uppercase tracking-[0.3em] text-[#0a0a09] disabled:opacity-30"
-              >
-                Resume Distributions
-              </button>
-            )}
-          </div>
-
-          {lastPauseTxHash && (
-            <div className="mt-6 rounded-2xl border border-greenBright/20 bg-greenBright/5 p-5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-greenBright mb-2">Transaction Submitted</p>
-              <p className="font-mono text-[11px] text-muted break-all">Tx: {lastPauseTxHash}</p>
-              <a
-                href={`https://stellar.expert/explorer/testnet/tx/${lastPauseTxHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-block text-[10px] font-bold text-greenBright underline underline-offset-4 hover:text-white"
-              >
-                View on Explorer →
-              </a>
+              {showRecoveryConfirm && recoveryUnits !== null && (
+                <div className="space-y-4 rounded-xl border border-warning/30 bg-warning/5 p-4">
+                  <p className="text-sm font-semibold text-warning">Review before signing</p>
+                  <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
+                    <dt className="text-muted">Token</dt>
+                    <dd className="break-all font-mono text-xs">{unallocatedBalance.token}</dd>
+                    <dt className="text-muted">Destination</dt>
+                    <dd className="break-all font-mono text-xs">{recoveryToInput}</dd>
+                    <dt className="text-muted">Amount</dt>
+                    <dd className="font-mono tabular-nums">{recoveryUnits.toLocaleString()} stroops</dd>
+                    <dt className="text-muted">Remaining after</dt>
+                    <dd className="font-mono tabular-nums">{(unallocatedUnits - recoveryUnits).toLocaleString()} stroops</dd>
+                  </dl>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => {
+                        void onConfirmRecovery();
+                      }}
+                      disabled={isSubmittingRecovery}
+                      loading={isSubmittingRecovery}
+                    >
+                      {isSubmittingRecovery ? "Waiting for confirmation…" : "Sign and recover"}
+                    </Button>
+                    <Button variant="ghost" onClick={() => setShowRecoveryConfirm(false)} disabled={isSubmittingRecovery}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* User Earnings Section */}
-      {wallet.connected && (
-        isLoadingDashboard ? (
-          <div className="glass-card rounded-[2.5rem] p-8 md:p-10 bg-greenMid/5 border-greenBright/10">
-            <SummaryCardSkeleton />
-          </div>
-        ) : (
-          <div className="glass-card rounded-[2.5rem] p-8 md:p-10 bg-greenMid/5 border-greenBright/10">
-            <div className="flex items-center justify-between mb-8">
-              <div className="space-y-1">
-                <h2 className="font-display text-2xl tracking-tight">Your Cumulative Earnings</h2>
-                <p className="text-sm text-muted">Aggregate revenue share across all active contracts.</p>
-              </div>
-              <div className="text-right">
-                <p className="text-4xl font-display text-greenBright">
-                  {Object.values(userEarnings).reduce((sum, val) => sum + Number(val), 0).toLocaleString()}
-                  <span className="text-sm font-sans opacity-40 ml-2">Stroops</span>
-                </p>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {dashboardData
-                .filter((p) => p.collaborators.some((c) => c.address === wallet.address))
-                .map((p) => (
-                  <ProjectCard
-                    key={p.projectId}
-                    project={p}
-                    userEarnings={userEarnings[p.projectId]}
-                  />
-                ))}
-            </div>
-          </div>
-        )
+          {lastRecoveryTxHash && (
+            <ConfirmedTx
+              title="Recovery transaction"
+              txHash={lastRecoveryTxHash}
+              explorerUrl={explorerUrl(lastRecoveryTxHash)}
+            />
+          )}
+        </Card>
       )}
-
-      {/* Performance Rollups */}
-      <div className="glass-card rounded-[2.5rem] p-8 md:p-10">
-        <h2 className="font-display text-2xl tracking-tight mb-8">Project Performance Rollups</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted border-b border-white/5">
-                <th className="pb-4 pl-4">Project</th>
-                <th className="pb-4">Category</th>
-                <th className="pb-4 text-right">Balance</th>
-                <th className="pb-4 text-right">Distributed</th>
-                <th className="pb-4 text-right pr-4">Rounds</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {isLoadingDashboard
-                ? Array.from({ length: 4 }).map((_, i) => (
-                    <tr key={i}>
-                      <td className="py-4 pl-4"><Skeleton variant="line" className="w-3/4" /></td>
-                      <td className="py-4"><Skeleton variant="line" className="w-1/2" /></td>
-                      <td className="py-4 text-right"><Skeleton variant="line" className="w-16 ml-auto" /></td>
-                      <td className="py-4 text-right"><Skeleton variant="line" className="w-16 ml-auto" /></td>
-                      <td className="py-4 text-right pr-4"><Skeleton variant="line" className="w-8 ml-auto" /></td>
-                    </tr>
-                  ))
-                : dashboardData.map((p) => (
-                    <tr key={p.projectId} className="group hover:bg-white/2 transition-colors">
-                      <td className="py-4 pl-4">
-                        <p className="font-bold text-sm">{sanitizeText(p.title)}</p>
-                        <p className="text-[9px] font-mono text-muted">{p.projectId}</p>
-                      </td>
-                      <td className="py-4">
-                        <span className="rounded-full bg-white/5 px-2 py-0.5 text-[9px] font-bold uppercase">{sanitizeText(p.projectType)}</span>
-                      </td>
-                      <td className="py-4 text-right font-mono text-xs text-greenBright/80">
-                        {Number(p.balance).toLocaleString()}
-                      </td>
-                      <td className="py-4 text-right font-mono text-xs">
-                        {Number(p.totalDistributed).toLocaleString()}
-                      </td>
-                      <td className="py-4 text-right font-mono text-xs pr-4">
-                        {p.distributionRound}
-                      </td>
-                    </tr>
-                  ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }
