@@ -7,7 +7,12 @@ export class AddUniqueIndexTransactionHash1760000000005 implements MigrationInte
     await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "IDX_transactions_tx_hash" ON "transactions" ("txHash")`);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX "public"."IDX_transactions_tx_hash"`);
-  }
+  /**
+   * Intentionally keeps the index. On databases initialised from the current
+   * InitialUserAndTransactionRecord migration the index already existed and
+   * `up` was a no-op, so dropping it here would remove the only database guard
+   * against duplicate transaction records. The initial migration's `down`
+   * drops it when the table itself is removed.
+   */
+  public async down(_queryRunner: QueryRunner): Promise<void> {}
 }

@@ -97,7 +97,7 @@ usersRouter.post("/login", async (req: Request, res: Response, next: NextFunctio
         where: { walletAddress, deletedAt: IsNull() }
       });
       if (!user || !user.isActive) return null;
-      return { user, token: signToken(user.walletAddress) };
+      return { user };
     });
 
     if (!authenticated) {
@@ -107,7 +107,7 @@ usersRouter.post("/login", async (req: Request, res: Response, next: NextFunctio
         "Unable to sign in. Check your details or try again later."
       );
     }
-    const { user, token } = authenticated;
+    const { user } = authenticated;
 
     logger.info("User logged in successfully", {
       userId: user.id,

@@ -44,7 +44,7 @@ export class InitialUserAndTransactionRecord1760000000000 implements MigrationIn
     await queryRunner.query(`DROP INDEX "public"."IDX_transactions_timestamp"`);
     await queryRunner.query(`DROP INDEX "public"."IDX_transactions_recipient"`);
     await queryRunner.query(`DROP INDEX "public"."IDX_transactions_round_id"`);
-    await queryRunner.query(`DROP INDEX "public"."IDX_transactions_tx_hash"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_transactions_tx_hash"`);
     await queryRunner.query(`DROP TABLE "transactions"`);
     await queryRunner.query(`DROP TYPE "public"."transactions_status_enum"`);
     await queryRunner.query(`DROP TABLE "users"`);

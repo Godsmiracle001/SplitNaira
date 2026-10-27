@@ -44,7 +44,7 @@ const REDACTED_KEYS = new Set([
 ]);
 
 function isRedactedKey(key: string): boolean {
-  return REDACTED_KEYS.has(key.toLowerCase().replace(/[-_]/g, "").replace("secret", "secret"));
+  return REDACTED_KEYS.has(key.toLowerCase().replace(/[-_]/g, ""));
 }
 
 /**
@@ -61,7 +61,7 @@ export function redactSensitivePayload(
 
   for (const [key, value] of Object.entries(payload)) {
     // Check the direct key
-    if (REDACTED_KEYS.has(key.toLowerCase())) {
+    if (isRedactedKey(key)) {
       redacted[key] = "[REDACTED]";
       continue;
     }
@@ -72,7 +72,7 @@ export function redactSensitivePayload(
       const redactedNested: Record<string, unknown> = {};
       let anyRedacted = false;
       for (const [nk, nv] of Object.entries(nested)) {
-        if (REDACTED_KEYS.has(nk.toLowerCase())) {
+        if (isRedactedKey(nk)) {
           redactedNested[nk] = "[REDACTED]";
           anyRedacted = true;
         } else {
