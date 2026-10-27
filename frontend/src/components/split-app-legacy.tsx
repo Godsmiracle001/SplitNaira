@@ -1,11 +1,11 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps, @typescript-eslint/no-explicit-any, no-empty */
+/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps, no-empty */
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Transaction, StrKey } from "@stellar/stellar-sdk";
 import { clsx } from "clsx";
 import { Controller, useFieldArray, useForm, type SubmitHandler } from "react-hook-form";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import {
   buildAllowTokenXdr,
@@ -35,7 +35,6 @@ import {
 import { isOwner, findDuplicateCollaboratorAddressIds, type CollaboratorAddressEntry } from "@/lib/address";
 import {
   createSorobanRpcServer,
-  sendSorobanTransaction,
   signWithWallet,
   submitSorobanTransactionAndPoll,
 } from "@/lib/wallet";
@@ -60,6 +59,23 @@ import {
 } from "./TransactionReceiptView";
 import { Input } from "./Input";
 import { CreateSplitSchema } from "@/lib/schemas";
+import {
+  FolderKanban,
+  LayoutDashboard,
+  PlusCircle,
+  Settings,
+  SlidersHorizontal,
+  Wallet as WalletIcon,
+} from "lucide-react";
+import Link from "next/link";
+import { buttonClasses } from "./ui/button-classes";
+import {
+  AmountParseError,
+  parseTokenAmount,
+  previewDistribution,
+  stroopsToSafeNumber,
+  toBigIntAmount,
+} from "@/lib/amounts";
 
 import { DashboardView } from "./dashboard/DashboardView";
 import { CreateSplitWizard } from "./create/CreateSplitWizard";
@@ -129,16 +145,38 @@ const SEEDED_PROJECT_IDS = [
   "cultural_resonance_05",
 ];
 
-const MAX_TOKEN_DECIMALS = 7;
+const TAB_ICONS = {
+  dashboard: LayoutDashboard,
+  create: PlusCircle,
+  manage: SlidersHorizontal,
+  projects: FolderKanban,
+} as const;
 
 /** Returns a message for an invalid deposit amount, or null when it's valid (#1267). */
 export function getDepositAmountError(raw: string): string | null {
   const value = raw.trim();
   if (!value) return "Enter an amount to deposit.";
-  const amount = Number(value);
-  if (!Number.isFinite(amount) || amount <= 0) return "Enter an amount greater than 0.";
-  const decimals = value.includes(".") ? value.split(".")[1].length : 0;
-  if (decimals > MAX_TOKEN_DECIMALS) return `Use at most ${MAX_TOKEN_DECIMALS} decimal places.`;
+  if (value.startsWith("-")) return "Enter an amount greater than 0.";
+  try {
+    const stroops = parseTokenAmount(value);
+    if (stroops <= 0n) return "Enter an amount greater than 0.";
+    stroopsToSafeNumber(stroops);
+    return null;
+  } catch (error) {
+    return error instanceof AmountParseError ? error.message : "Enter a valid amount.";
+  }
+}
+
+/** Validates a recovery amount, which the admin enters in whole stroops. */
+export function getRecoveryAmountError(raw: string, available: string | null): string | null {
+  const value = raw.trim();
+  if (!/^\d+$/.test(value)) return "Enter a whole number of stroops.";
+  const stroops = BigInt(value);
+  if (stroops <= 0n) return "Enter an amount greater than 0.";
+  if (available !== null && stroops > toBigIntAmount(available)) {
+    return "Amount exceeds the unallocated balance.";
+  }
+  if (stroops > BigInt(Number.MAX_SAFE_INTEGER)) return "Amount is too large to submit in one transaction.";
   return null;
 }
 
@@ -156,6 +194,7 @@ export function SplitApp({
 } = {}) {
   const { wallet, connect, refresh, loading: isWalletLoading, error: walletError } = useWallet();
   const tWizardValidation = useTranslations("SplitApp.wizard.validation");
+  const locale = useLocale();
 
   const {
     control,
@@ -461,11 +500,41 @@ export function SplitApp({
     }
   }
 
-  async function onConfirmRecovery() {
+  /**
+   * Signs and submits a built transaction, resolving only once the ledger
+   * confirms it. A submission whose outcome is unknown keeps `action`
+   * blocked (see blockIfUnconfirmed) so it cannot be sent twice.
+   */
+  async function signSubmitAndConfirm(
+    action: string,
+    built: { xdr: string; metadata: { networkPassphrase: string } },
+    onSubmitted?: (hash: string) => void,
+  ): Promise<string> {
+    const signedTxXdr = await signWithWallet(built.xdr, built.metadata.networkPassphrase);
+    const transaction = new Transaction(signedTxXdr, built.metadata.networkPassphrase);
+    let submitted: UnconfirmedSubmission | null = null;
+    try {
+      const { hash } = await submitSorobanTransactionAndPoll(createSorobanRpcServer(), transaction, {
+        afterSubmitted: (hash) => {
+          submitted = { hash, submittedAt: Date.now() };
+          onSubmitted?.(hash);
+        },
+      });
+      return hash;
+    } catch (error) {
+      blockIfUnconfirmed(action, error, submitted);
+      throw error;
+    }
+  }
+
+  const onConfirmRecovery = () => submissionGuard.run("recovery", runRecovery);
+
+  async function runRecovery() {
     if (!wallet.address || !unallocatedBalance) return;
-    const amount = Number(recoveryAmountInput.trim());
-    if (!recoveryToInput.trim() || !Number.isFinite(amount) || amount <= 0) {
-      notify.error("Destination address and a valid positive amount are required.");
+    const destination = recoveryToInput.trim();
+    const amountError = getRecoveryAmountError(recoveryAmountInput, unallocatedBalance.unallocated);
+    if (!destination || amountError) {
+      notify.error(amountError ?? "Destination address is required.");
       return;
     }
     setIsSubmittingRecovery(true);
@@ -473,20 +542,15 @@ export function SplitApp({
       const buildResponse = await buildWithdrawUnallocatedXdr({
         admin: wallet.address,
         token: unallocatedBalance.token,
-        to: recoveryToInput.trim(),
-        amount,
+        to: destination,
+        amount: Number(recoveryAmountInput.trim()),
       });
-      const signedTxXdr = await signWithWallet(
-        buildResponse.xdr,
-        buildResponse.metadata.networkPassphrase,
-      );
-      const server = createSorobanRpcServer();
-      const transaction = new Transaction(signedTxXdr, buildResponse.metadata.networkPassphrase);
-      const submitResponse = await sendSorobanTransaction(server, transaction);
-      setLastRecoveryTxHash(submitResponse.hash);
+      const hash = await signSubmitAndConfirm("recovery", buildResponse, setLastRecoveryTxHash);
       setShowRecoveryConfirm(false);
-      notify.success("Recovery transaction submitted successfully.");
+      notify.success("Recovery confirmed on ledger.");
+      // Refreshing the balance clears the last hash; restore it afterwards.
       await onInspectUnallocated();
+      setLastRecoveryTxHash(hash);
     } catch (error) {
       notify.error(error instanceof Error ? error.message : "Recovery transaction failed.");
     } finally {
@@ -504,7 +568,9 @@ export function SplitApp({
     );
   }
 
-  async function onUpdateMetadata() {
+  const onUpdateMetadata = () => submissionGuard.run("update_metadata", runUpdateMetadata);
+
+  async function runUpdateMetadata() {
     if (!fetchedProject || !wallet.address) return;
     if (!editTitle.trim()) {
       notify.error("Title is required.");
@@ -531,14 +597,7 @@ export function SplitApp({
         nextTitle,
         nextProjectType,
       );
-      const signedTxXdr = await signWithWallet(
-        buildResponse.xdr,
-        buildResponse.metadata.networkPassphrase,
-      );
-      const server = createSorobanRpcServer();
-      const transaction = new Transaction(signedTxXdr, buildResponse.metadata.networkPassphrase);
-      const submitResponse = await sendSorobanTransaction(server, transaction);
-      telemetry.submitted(submitResponse.hash);
+      await signSubmitAndConfirm("update_metadata", buildResponse, telemetry.submitted);
       telemetry.succeeded();
       notify.success("Project metadata updated successfully.");
       refreshDependentViews("update_metadata", { projectId: projectId, account: wallet.address });
@@ -552,7 +611,10 @@ export function SplitApp({
     }
   }
 
-  async function onUpdateCollaborators() {
+  const onUpdateCollaborators = () =>
+    submissionGuard.run("update_collaborators", runUpdateCollaborators);
+
+  async function runUpdateCollaborators() {
     if (!fetchedProject || !wallet.address) return;
     const result = CreateSplitSchema.shape.collaborators.safeParse(editCollaborators);
     if (!result.success) {
@@ -574,14 +636,7 @@ export function SplitApp({
           basisPoints: Number.parseInt(c.basisPoints, 10),
         })),
       );
-      const signedTxXdr = await signWithWallet(
-        buildResponse.xdr,
-        buildResponse.metadata.networkPassphrase,
-      );
-      const server = createSorobanRpcServer();
-      const transaction = new Transaction(signedTxXdr, buildResponse.metadata.networkPassphrase);
-      const submitResponse = await sendSorobanTransaction(server, transaction);
-      telemetry.submitted(submitResponse.hash);
+      await signSubmitAndConfirm("update_collaborators", buildResponse, telemetry.submitted);
       telemetry.succeeded();
       notify.success("Collaborators updated successfully.");
       refreshDependentViews("update_collaborators", { projectId: fetchedProject.projectId, account: wallet.address });
@@ -959,7 +1014,7 @@ export function SplitApp({
     const telemetry = trackSplitLifecycle("deposit", { projectId: fetchedProject.projectId });
     let submitted: UnconfirmedSubmission | null = null;
     try {
-      const amountInStroops = Math.floor(Number.parseFloat(depositAmount) * 10_000_000);
+      const amountInStroops = stroopsToSafeNumber(parseTokenAmount(depositAmount));
       const { xdr, metadata } = await buildDepositXdr(
         fetchedProject.projectId,
         wallet.address,
@@ -1100,7 +1155,10 @@ export function SplitApp({
     }
   };
 
-  const onTogglePause = async (action: "pause" | "unpause") => {
+  const onTogglePause = (action: "pause" | "unpause") =>
+    submissionGuard.run("toggle_pause", () => runTogglePause(action));
+
+  const runTogglePause = async (action: "pause" | "unpause") => {
     if (!wallet.address || !isContractAdmin) {
       notify.error("Only the contract admin can pause or unpause distributions.");
       return;
@@ -1113,14 +1171,7 @@ export function SplitApp({
           ? await buildPauseDistributionsXdr(wallet.address)
           : await buildUnpauseDistributionsXdr(wallet.address);
 
-      const signedTxXdr = await signWithWallet(
-        buildResponse.xdr,
-        buildResponse.metadata.networkPassphrase,
-      );
-      const server = createSorobanRpcServer();
-      const transaction = new Transaction(signedTxXdr, buildResponse.metadata.networkPassphrase);
-      const submitResponse = await sendSorobanTransaction(server, transaction);
-      setLastPauseTxHash(submitResponse.hash);
+      await signSubmitAndConfirm("toggle_pause", buildResponse, setLastPauseTxHash);
       setShowPauseConfirm(false);
       setShowUnpauseConfirm(false);
       notify.success(action === "pause" ? "Distributions paused." : "Distributions resumed.");
@@ -1133,7 +1184,10 @@ export function SplitApp({
     }
   };
 
-  const onSubmitAllowlistAction = async (action: "allow" | "disallow") => {
+  const onSubmitAllowlistAction = (action: "allow" | "disallow") =>
+    submissionGuard.run("allowlist", () => runAllowlistAction(action));
+
+  const runAllowlistAction = async (action: "allow" | "disallow") => {
     if (!wallet.address || !isContractAdmin || !isValidAllowlistToken) return;
     setIsUpdatingAllowlist(true);
     try {
@@ -1141,23 +1195,17 @@ export function SplitApp({
         action === "allow"
           ? await buildAllowTokenXdr(wallet.address, normalizedAllowlistToken)
           : await buildDisallowTokenXdr(wallet.address, normalizedAllowlistToken);
-      const signedTxXdr = await signWithWallet(
-        buildResponse.xdr,
-        buildResponse.metadata.networkPassphrase,
-      );
-      const server = createSorobanRpcServer();
-      const transaction = new Transaction(signedTxXdr, buildResponse.metadata.networkPassphrase);
-      const submitResponse = await sendSorobanTransaction(server, transaction);
+      const txHash = await signSubmitAndConfirm("allowlist", buildResponse);
       setLastAllowlistTx({
         action,
         token: normalizedAllowlistToken,
-        txHash: submitResponse.hash,
+        txHash,
       });
       setAllowlistTokenInput("");
       notify.success("Allowlist updated.");
       await refreshTokenAllowlist();
     } catch (error) {
-      notify.error("Failed to update allowlist.");
+      notify.error(error instanceof Error ? `Failed to update allowlist: ${error.message}` : "Failed to update allowlist.");
     } finally {
       setIsUpdatingAllowlist(false);
     }
@@ -1223,18 +1271,33 @@ export function SplitApp({
   }, [showLockModal, showDepositModal]);
 
   return (
-    <main className="min-h-screen px-6 py-12 md:px-12 selection:bg-greenBright/10 selection:text-greenBright">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
+    <main className="min-h-screen px-4 pb-16 pt-6 sm:px-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
         {/* Header Section */}
-        <header className="glass-card rounded-[2.5rem] p-8 md:p-10">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="space-y-1">
-              <h1 className="font-display text-4xl tracking-tight text-ink">SplitNaira</h1>
-              <p className="max-w-md text-sm leading-relaxed text-muted">
+        <header className="rounded-[var(--radius-card)] border border-line bg-surface-raised p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <Link href={`/${locale}`} className="flex items-center gap-2" aria-label="SplitNaira home">
+                <span
+                  aria-hidden="true"
+                  className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-sm font-bold text-surface"
+                >
+                  S
+                </span>
+                <h1 className="font-display text-xl font-semibold tracking-tight text-ink">SplitNaira</h1>
+              </Link>
+              <p className="hidden text-sm text-muted md:block">
                 Premium royalty management on Stellar.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/${locale}/dashboard/settings`}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm text-muted hover:bg-surface-overlay hover:text-ink"
+              >
+                <Settings aria-hidden="true" className="h-4 w-4" />
+                <span className="sr-only sm:not-sr-only">Settings</span>
+              </Link>
               {!wallet.connected ? (
                 <button
                   type="button"
@@ -1242,19 +1305,20 @@ export function SplitApp({
                   aria-label="Connect a wallet"
                   aria-busy={isWalletLoading}
                   disabled={isWalletLoading}
-                  className="premium-button rounded-full bg-greenMid px-8 py-3 text-sm font-bold text-white shadow-lg"
+                  className={buttonClasses("primary", "md", "font-semibold disabled:opacity-60")}
                 >
+                  <WalletIcon aria-hidden="true" className="h-4 w-4" />
                   Connect Wallet
                 </button>
               ) : (
-                <div className="flex gap-2">
+                <>
                   <button
                     type="button"
                     onClick={onConnectWallet}
                     aria-label="Switch to a different wallet"
                     aria-busy={isWalletLoading}
                     disabled={isWalletLoading}
-                    className="premium-button rounded-full border bg-white/5 px-6 py-3 text-sm"
+                    className={buttonClasses("secondary", "md")}
                   >
                     Switch Wallet
                   </button>
@@ -1264,7 +1328,7 @@ export function SplitApp({
                     aria-label="Refresh wallet connection"
                     aria-busy={isWalletLoading}
                     disabled={isWalletLoading}
-                    className="premium-button rounded-full border bg-white/5 px-6 py-3 text-sm"
+                    className={buttonClasses("secondary", "md")}
                   >
                     Sync
                   </button>
@@ -1272,11 +1336,11 @@ export function SplitApp({
                     type="button"
                     onClick={onDisconnectWallet}
                     aria-label="Disconnect wallet using the wallet extension or app"
-                    className="premium-button rounded-full border bg-white/5 px-6 py-3 text-sm hover:text-red-400"
+                    className={buttonClasses("ghost", "md", "hover:text-danger")}
                   >
                     Disconnect
                   </button>
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -1289,41 +1353,50 @@ export function SplitApp({
               : ""}
           </p>
           {wallet.connected && (
-            <div className="mt-8 flex flex-wrap gap-8 border-t border-white/5 pt-8 text-[11px] font-bold uppercase tracking-[0.2em] text-muted">
-              <div className="flex items-center gap-3">
-                <span className="h-2 w-2 rounded-full bg-greenBright animate-pulse" />
+            <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-line pt-4 text-xs text-muted">
+              <div className="flex items-center gap-2">
+                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-success" />
                 <span role="status" aria-live="polite">Status: Connected</span>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="opacity-40">Wallet</span>
-                <span className="text-ink font-mono">
+              <div className="flex items-center gap-2">
+                <dt>Wallet</dt>
+                <dd className="font-mono text-ink">
                   {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-6)}
-                </span>
+                </dd>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="opacity-40">Network</span>
-                <span className="text-ink">{wallet.network}</span>
+              <div className="flex items-center gap-2">
+                <dt>Network</dt>
+                <dd className="text-ink">{wallet.network ?? "Unknown"}</dd>
               </div>
-            </div>
+            </dl>
           )}
         </header>
 
         {/* Navigation Tabs */}
-        <nav className="flex gap-1 rounded-full bg-white/5 p-1.5 self-center">
-          {["dashboard", "create", "manage", "projects"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as any)}
-              className={clsx(
-                "rounded-full px-8 py-2.5 text-xs font-bold uppercase tracking-widest transition-all",
-                activeTab === tab
-                  ? "bg-white/10 text-ink shadow-sm"
-                  : "text-muted hover:text-ink/80",
-              )}
-            >
-              {tab === "manage" ? "Manage & Distribute" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
+        <nav aria-label="Workspace" className="custom-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <ul className="flex w-max gap-1 rounded-xl border border-line bg-surface-raised p-1">
+            {(["dashboard", "create", "manage", "projects"] as const).map((tab) => {
+              const Icon = TAB_ICONS[tab];
+              return (
+                <li key={tab}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    aria-current={activeTab === tab ? "page" : undefined}
+                    className={clsx(
+                      "inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                      activeTab === tab
+                        ? "bg-surface-overlay text-ink shadow-sm"
+                        : "text-muted hover:text-ink",
+                    )}
+                  >
+                    <Icon aria-hidden="true" className="h-4 w-4" />
+                    {tab === "manage" ? "Manage & Distribute" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </nav>
 
         <UnconfirmedSubmissionNotice
@@ -1482,10 +1555,8 @@ export function SplitApp({
               .
             </p>
             <div className="space-y-3 max-h-75 overflow-y-auto pr-2 custom-scrollbar">
-              {fetchedProject.collaborators.map((collab, idx) => {
-                const amount = Math.floor(
-                  (Number(fetchedProject.balance) * collab.basisPoints) / 10_000,
-                );
+              {(previewDistribution(toBigIntAmount(fetchedProject.balance), fetchedProject.collaborators) ?? []).map((collab, idx) => {
+                const amount = collab.amount;
                 return (
                   <div key={idx} className="flex justify-between items-center rounded-2xl bg-white/5 p-5 border border-white/5">
                     <div className="space-y-0.5">

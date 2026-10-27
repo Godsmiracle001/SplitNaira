@@ -7,6 +7,11 @@ const ACTION_LABELS: Record<string, string> = {
   deposit: "Deposit",
   distribute: "Payout",
   lock: "Project lock",
+  update_metadata: "Metadata update",
+  update_collaborators: "Collaborator update",
+  recovery: "Fund recovery",
+  toggle_pause: "Distribution pause/resume",
+  allowlist: "Allowlist change",
 };
 
 interface UnconfirmedSubmissionNoticeProps {

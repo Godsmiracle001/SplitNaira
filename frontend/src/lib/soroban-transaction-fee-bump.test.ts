@@ -25,7 +25,8 @@ import { isUnconfirmedSubmission } from "./submission-guard";
 
 const HASH = "ab".repeat(32);
 const SOURCE = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-const FEE_SOURCE = "GBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+// A checksum-valid account ID (the previous literal had 57 characters).
+const FEE_SOURCE = "GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H";
 
 function innerTransaction() {
   return new TransactionBuilder(new Account(SOURCE, "1"), {
@@ -39,11 +40,7 @@ function innerTransaction() {
 
 /** A well-formed fee-bump envelope wrapping `innerTransaction()`. */
 function feeBumpTransaction() {
-  return TransactionBuilder.buildFeeBumpTransaction(
-    new Account(FEE_SOURCE, "1"),
-    "200",
-    innerTransaction(),
-  );
+  return TransactionBuilder.buildFeeBumpTransaction(FEE_SOURCE, "200", innerTransaction(), Networks.TESTNET);
 }
 
 function server(send: unknown, poll?: unknown) {
@@ -191,10 +188,14 @@ describe("malformed fee bumps", () => {
     const afterSubmitted = vi.fn();
     const bump = feeBumpTransaction();
 
-    await expect(
-      submitSorobanTransactionAndPoll(server({ status: "PENDING" }), bump, { afterSubmitted }),
-    ).rejects.toBeInstanceOf(RpcResponseValidationError);
+    // Same contract as a plain transaction (soroban-transaction.test.ts): an
+    // envelope that may have reached the network is reported as unconfirmed,
+    // which is what keeps the action blocked against a second fee bump.
+    const error = await submitSorobanTransactionAndPoll(server({ status: "PENDING" }), bump, {
+      afterSubmitted,
+    }).catch((e: unknown) => e);
 
+    expect(isUnconfirmedSubmission(error)).toBe(true);
     expect(afterSubmitted).toHaveBeenCalledWith(bump.hash().toString("hex"));
   });
 

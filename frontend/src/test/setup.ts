@@ -67,6 +67,7 @@ vi.mock("next-intl", () => ({
       return key;
     };
   },
+  useLocale: () => "en",
   NextIntlClientProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
