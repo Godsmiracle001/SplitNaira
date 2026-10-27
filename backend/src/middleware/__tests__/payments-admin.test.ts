@@ -56,7 +56,8 @@ const serverMock = {
   getEvents: getEventsMock,
 };
 
-vi.mock("@stellar/stellar-sdk", () => {
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const { StrKey } = await importOriginal<typeof import("@stellar/stellar-sdk")>();
   class ScMapEntry {
     key: unknown;
     val: unknown;
@@ -67,6 +68,8 @@ vi.mock("@stellar/stellar-sdk", () => {
   }
 
   return {
+    // Real StrKey: env and address validation depend on its checksum logic.
+    StrKey,
     Address: {
       fromString: vi.fn((address: string) => ({
         toScVal: () => ({ address }),
@@ -181,7 +184,7 @@ beforeAll(() => {
   process.env.SOROBAN_NETWORK_PASSPHRASE =
     process.env.SOROBAN_NETWORK_PASSPHRASE ?? "Test SDF Network";
   process.env.CONTRACT_ID =
-    process.env.CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    process.env.CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
   process.env.SIMULATOR_ACCOUNT = process.env.SIMULATOR_ACCOUNT ?? "GTESTSIMULATOR";
   process.env.DATABASE_URL = process.env.DATABASE_URL ?? "https://example.com/postgres";
 });

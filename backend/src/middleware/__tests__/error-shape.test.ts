@@ -20,7 +20,7 @@ beforeAll(() => {
   process.env.SOROBAN_NETWORK_PASSPHRASE =
     process.env.SOROBAN_NETWORK_PASSPHRASE ?? "Test SDF Network";
   process.env.CONTRACT_ID =
-    process.env.CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    process.env.CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
   process.env.SIMULATOR_ACCOUNT = process.env.SIMULATOR_ACCOUNT ?? "GTESTSIMULATOR";
   process.env.DATABASE_URL = process.env.DATABASE_URL ?? "https://example.com/postgres";
 });

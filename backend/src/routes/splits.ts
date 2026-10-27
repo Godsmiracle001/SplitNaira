@@ -26,12 +26,9 @@ import {
   stellarAddressSchema,
   createSplitSchema,
   projectIdParamSchema,
-  lockProjectSchema,
-  depositSchema,
   updateMetadataSchema,
   updateCollaboratorsSchema,
   allowlistQuerySchema,
-  listProjectsSchema,
   distributeSchema,
   historyQuerySchema,
   adminTokenSchema,
@@ -76,10 +73,6 @@ import {
   serializeBigInts,
   buildCreateProjectUnsignedXdr,
   simulateReadOnlyContractCall,
-  listProjects,
-  fetchProjectById,
-  buildLockProjectUnsignedXdr,
-  buildDepositUnsignedXdr,
   buildUpdateCollaboratorsUnsignedXdr,
   buildUpdateMetadataUnsignedXdr,
   buildPauseDistributionsUnsignedXdr,
@@ -108,10 +101,10 @@ export {
   projectIdParamSchema,
   lockProjectSchema,
   depositSchema,
+  listProjectsSchema,
   updateMetadataSchema,
   updateCollaboratorsSchema,
   allowlistQuerySchema,
-  listProjectsSchema,
   distributeSchema,
   historyQuerySchema,
   adminTokenSchema,
@@ -151,10 +144,6 @@ export {
   buildCreateProjectUnsignedXdr,
   simulateReadOnlyContractCall,
   fetchProjectsFromContract,
-  listProjects,
-  fetchProjectById,
-  buildLockProjectUnsignedXdr,
-  buildDepositUnsignedXdr,
   buildUpdateCollaboratorsUnsignedXdr,
   buildUpdateMetadataUnsignedXdr,
   buildPauseDistributionsUnsignedXdr,
@@ -241,117 +230,6 @@ function logPaymentsAdminAction(res: Response, action: string, details: Record<s
   });
 }
 
-splitsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const parsed = listProjectsSchema.safeParse(req.query);
-
-    if (!parsed.success) {
-      throw new AppError(
-        ErrorType.VALIDATION,
-        ErrorCode.VALIDATION_ERROR,
-        "Invalid request payload.",
-        undefined,
-        parsed.error.flatten()
-      );
-    }
-
-    const { start, limit, search, type } = parsed.data;
-
-    const projects = await listProjects(start, limit, search, type);
-    const totalRetval = await simulateReadOnlyContractCall("get_project_count");
-    const total = totalRetval
-      ? decodeContractValue("simulateTransaction:get_project_count", contractU32Schema, totalRetval)
-      : projects.length;
-
-    return res.status(200).json(
-      serializeBigInts({
-        projects,
-        total,
-        start,
-        limit,
-        hasMore: start + projects.length < total,
-      })
-    );
-  } catch (error) {
-    return next(error);
-  }
-});
-/**
- * @openapi
- * GET /splits/{projectId}
- * summary: Get project details by ID
- * description: Fetches the current on-chain state for a single split project.
- * tags: [Splits]
- */
-splitsRouter.get("/:projectId", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const parsedId = projectIdParamSchema.safeParse(req.params.projectId);
-    if (!parsedId.success) {
-      throw new AppError(
-        ErrorType.VALIDATION,
-        ErrorCode.VALIDATION_ERROR,
-        "Invalid projectId format.",
-        undefined,
-        parsedId.error.flatten()
-      );
-    }
-    const projectId = parsedId.data;
-
-    const project = await fetchProjectById(projectId);
-    if (!project) {
-      throw new AppError(
-        ErrorType.RPC,
-        ErrorCode.NOT_FOUND,
-        `Split project ${projectId} not found.`
-      );
-    }
-
-    return res.status(200).json(serializeBigInts(project));
-  } catch (error) {
-    return next(error);
-  }
-});
-
-splitsRouter.post("/:projectId/lock", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const parsedId = projectIdParamSchema.safeParse(req.params.projectId);
-    if (!parsedId.success) {
-      throw new AppError(
-        ErrorType.VALIDATION,
-        ErrorCode.VALIDATION_ERROR,
-        "Invalid projectId format.",
-        undefined,
-        parsedId.error.flatten()
-      );
-    }
-    const projectId = parsedId.data;
-
-    const parsedBody = lockProjectSchema.safeParse(req.body);
-
-    if (!parsedBody.success) {
-      throw new AppError(
-        ErrorType.VALIDATION,
-        ErrorCode.VALIDATION_ERROR,
-        "Invalid request payload.",
-        { message: "Check owner address." },
-        parsedBody.error.flatten()
-      );
-    }
-
-    const result = await buildLockProjectUnsignedXdr({
-      projectId,
-      owner: parsedBody.data.owner,
-    });
-
-    return res.status(200).json(result);
-  } catch (error) {
-    if (error instanceof RequestValidationError) {
-      throw new AppError(ErrorType.VALIDATION, ErrorCode.VALIDATION_ERROR, error.message);
-    }
-    return next(error);
-  }
-});
-
 /**
  * Allowlist caching contract (Issue #1095): the allowlist reads
  * (`/admin/allowlist`, `/admin/is-token-allowed`, `/admin/token-count`)
@@ -414,42 +292,6 @@ splitsRouter.get(
     }
   )
 );
-
-splitsRouter.post("/:projectId/deposit", async (req, res, next) => {
-  try {
-    const requestId = res.locals.requestId;
-
-    const parsedParams = projectIdParamSchema.safeParse(req.params.projectId);
-    const parsedBody = depositSchema.safeParse(req.body);
-
-    if (!parsedParams.success || !parsedBody.success) {
-      return sendValidationError(res, requestId, "Invalid request payload.", {
-        params: parsedParams.success ? null : parsedParams.error.flatten(),
-        body: parsedBody.success ? null : parsedBody.error.flatten(),
-      });
-    }
-
-    try {
-      const result = await buildDepositUnsignedXdr({
-        projectId: parsedParams.data,
-        from: parsedBody.data.from,
-        amount: parsedBody.data.amount,
-        token: parsedBody.data.token,
-      });
-      // Evict cached project state; balance will change after submission
-      invalidateCache(`project:${parsedParams.data}`);
-      invalidateCacheByPrefix("list_projects:");
-      return res.status(200).json(result);
-    } catch (error) {
-      if (error instanceof RequestValidationError) {
-        return sendValidationError(res, requestId, error.message);
-      }
-      throw error;
-    }
-  } catch (error) {
-    return next(error);
-  }
-});
 
 splitsRouter.patch("/:projectId/metadata", async (req, res, next) => {
   try {

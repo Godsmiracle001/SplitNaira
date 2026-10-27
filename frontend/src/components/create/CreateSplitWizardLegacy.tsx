@@ -1,12 +1,22 @@
 "use client";
 
-import { Controller, type Control, type UseFormRegister, type FieldErrors, type FieldArrayWithId } from "react-hook-form";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  Controller,
+  type Control,
+  type UseFormRegister,
+  type UseFormHandleSubmit,
+  type FieldErrors,
+  type FieldArrayWithId,
+} from "react-hook-form";
 import { clsx } from "clsx";
 import { StrKey } from "@stellar/stellar-sdk";
+import { useTranslations } from "next-intl";
 import type { SplitProject } from "@/lib/stellar";
 import type { WalletState } from "@/lib/wallet";
 import { TokenSelector } from "../TypeSelector";
 import { TransactionReceiptView, type TransactionReceipt } from "../TransactionReceiptView";
+import { FormErrorSummary, type FormErrorSummaryItem } from "../FormErrorSummary";
 
 interface CreateCollaboratorInput {
   address: string;
@@ -20,13 +30,14 @@ interface CreateSplitFormValues {
   projectType: string;
   token: string;
   collaborators: CreateCollaboratorInput[];
+  expiresAt?: string;
 }
 
 interface CreateSplitWizardProps {
   wallet: WalletState;
   control: Control<CreateSplitFormValues>;
   register: UseFormRegister<CreateSplitFormValues>;
-  handleSubmit: (callback: (data: CreateSplitFormValues) => void) => (e?: React.BaseSyntheticEvent) => Promise<void>;
+  handleSubmit: UseFormHandleSubmit<CreateSplitFormValues>;
   onSubmit: (data: CreateSplitFormValues) => void;
   createFormErrors: FieldErrors<CreateSplitFormValues>;
   collaboratorFields: FieldArrayWithId<CreateSplitFormValues, "collaborators", "id">[];
@@ -45,6 +56,16 @@ interface CreateSplitWizardProps {
   setActiveTab: (tab: "dashboard" | "create" | "manage" | "projects") => void;
   setSearchProjectId: (val: string) => void;
   setFetchedProject: (p: SplitProject | null) => void;
+}
+
+function isEmptyOrFuture(value?: string): boolean {
+  return !value || new Date(value).getTime() > Date.now();
+}
+
+/** Joins the ids of whichever descriptions currently apply, for `aria-describedby`. */
+function describedBy(...ids: Array<string | false | null | undefined>): string | undefined {
+  const present = ids.filter(Boolean);
+  return present.length ? present.join(" ") : undefined;
 }
 
 export function CreateSplitWizard({
@@ -71,12 +92,82 @@ export function CreateSplitWizard({
   setSearchProjectId,
   setFetchedProject,
 }: CreateSplitWizardProps) {
+  const t = useTranslations("SplitApp.wizard.validation");
+  const isDuplicateProjectId = Boolean(
+    createRetryError && /project id .*already exists/i.test(createRetryError),
+  );
+
+  // Accessible error summary (#1267): revealed by a failed submit attempt,
+  // never while the user is typing.
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const summaryRef = useRef<HTMLDivElement>(null);
+
+  const isTotalInvalid = totalBasisPoints !== 10_000;
+  const totalMessage =
+    totalBasisPoints < 10_000
+      ? t("underAllocated", { remaining: (10_000 - totalBasisPoints).toLocaleString() })
+      : t("overAllocated", { over: (totalBasisPoints - 10_000).toLocaleString() });
+
+  const summaryErrors: FormErrorSummaryItem[] = [];
+  const pushError = (fieldId: string, message?: string) => {
+    if (message) summaryErrors.push({ fieldId, message });
+  };
+  pushError("projectId", createFormErrors.projectId?.message);
+  pushError("title", createFormErrors.title?.message);
+  pushError("token", createFormErrors.token?.message);
+  pushError("projectType", createFormErrors.projectType?.message);
+  pushError("expiresAt", createFormErrors.expiresAt?.message);
+  collaboratorFields.forEach((field, index) => {
+    const rowErrors = createFormErrors.collaborators?.[index];
+    pushError(`address-${field.id}`, rowErrors?.address?.message ?? collaboratorValidationErrors[field.id]);
+    pushError(`alias-${field.id}`, rowErrors?.alias?.message);
+    pushError(`bp-${field.id}`, rowErrors?.basisPoints?.message);
+  });
+  if (isTotalInvalid && collaboratorFields[0]) {
+    pushError(`bp-${collaboratorFields[0].id}`, totalMessage);
+  }
+
+  // Reads the latest errors without making the effect re-run on every
+  // change: focus should only move when there's a new submit attempt.
+  const focusFirstError = useEffectEvent(() => {
+    if (summaryErrors.length > 1) {
+      summaryRef.current?.focus();
+    } else if (summaryErrors.length === 1) {
+      document.getElementById(summaryErrors[0].fieldId)?.focus();
+    }
+  });
+
+  useEffect(() => {
+    if (focusRequest > 0) focusFirstError();
+  }, [focusRequest]);
+
+  const revealErrors = () => {
+    setHasAttemptedSubmit(true);
+    setFocusRequest((n) => n + 1);
+  };
+
+  const submitForm = handleSubmit((data) => {
+    if (sorobanSplitFlowBusy) return;
+    // Field rules passed, but form-level checks (share total, duplicate
+    // addresses) can still fail.
+    if (!isValid) {
+      revealErrors();
+      return;
+    }
+    onSubmit(data);
+  }, revealErrors);
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="glass-card rounded-[2.5rem] p-8 md:p-10 space-y-12">
+    <form onSubmit={submitForm} noValidate className="glass-card rounded-[2.5rem] p-8 md:p-10 space-y-12">
       <div className="flex items-center justify-between border-b border-white/5 pb-6">
         <h2 className="font-display text-2xl tracking-tight">Project Setup</h2>
         <span className="text-[10px] font-bold uppercase text-muted">Step 01 / 02</span>
       </div>
+
+      {hasAttemptedSubmit && summaryErrors.length > 1 && (
+        <FormErrorSummary ref={summaryRef} errors={summaryErrors} />
+      )}
 
       <div className="mt-8 grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
@@ -90,10 +181,12 @@ export function CreateSplitWizard({
             id="projectId"
             placeholder="e.g. dawn_of_nova_01"
             className="glass-input w-full rounded-2xl px-5 py-4 text-sm"
-            {...register("projectId", { required: "Project identifier is required." })}
+            aria-invalid={Boolean(createFormErrors.projectId)}
+            aria-describedby={describedBy(createFormErrors.projectId && "projectId-error")}
+            {...register("projectId", { required: t("projectIdRequired") })}
           />
           {createFormErrors.projectId && (
-            <p className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
+            <p id="projectId-error" className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
               {createFormErrors.projectId.message}
             </p>
           )}
@@ -109,10 +202,12 @@ export function CreateSplitWizard({
             id="title"
             placeholder="e.g. Dawn of Nova"
             className="glass-input w-full rounded-2xl px-5 py-4 text-sm"
-            {...register("title", { required: "Display title is required." })}
+            aria-invalid={Boolean(createFormErrors.title)}
+            aria-describedby={describedBy(createFormErrors.title && "title-error")}
+            {...register("title", { required: t("titleRequired") })}
           />
           {createFormErrors.title && (
-            <p className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
+            <p id="title-error" className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
               {createFormErrors.title.message}
             </p>
           )}
@@ -121,26 +216,23 @@ export function CreateSplitWizard({
           control={control}
           name="token"
           rules={{
-            required: "Asset token is required.",
+            required: t("tokenRequired"),
             validate: (value) =>
               StrKey.isValidEd25519PublicKey(value) || StrKey.isValidContract(value)
                 ? true
-                : "Enter a valid Stellar token address.",
+                : t("invalidTokenAddress"),
           }}
           render={({ field }) => (
             <TokenSelector
+              id="token"
               value={field.value}
               onChange={field.onChange}
               network={wallet.network ?? null}
               required
+              error={createFormErrors.token?.message}
             />
           )}
         />
-        {createFormErrors.token && (
-          <p className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter md:col-span-2 -mt-4">
-            {createFormErrors.token.message}
-          </p>
-        )}
         <div className="space-y-2">
           <label
             htmlFor="projectType"
@@ -152,11 +244,36 @@ export function CreateSplitWizard({
             id="projectType"
             placeholder="e.g. Music, Film"
             className="glass-input w-full rounded-2xl px-5 py-4 text-sm"
-            {...register("projectType", { required: "Media category is required." })}
+            aria-invalid={Boolean(createFormErrors.projectType)}
+            aria-describedby={describedBy(createFormErrors.projectType && "projectType-error")}
+            {...register("projectType", { required: t("projectTypeRequired") })}
           />
           {createFormErrors.projectType && (
-            <p className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
+            <p id="projectType-error" className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
               {createFormErrors.projectType.message}
+            </p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <label
+            htmlFor="expiresAt"
+            className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted px-1"
+          >
+            Expiration (Optional)
+          </label>
+          <input
+            id="expiresAt"
+            type="datetime-local"
+            className="glass-input w-full rounded-2xl px-5 py-4 text-sm"
+            aria-invalid={Boolean(createFormErrors.expiresAt)}
+            aria-describedby={describedBy(createFormErrors.expiresAt && "expiresAt-error")}
+            {...register("expiresAt", {
+              validate: (value) => isEmptyOrFuture(value) || "Expiration must be in the future",
+            })}
+          />
+          {createFormErrors.expiresAt && (
+            <p id="expiresAt-error" className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
+              {createFormErrors.expiresAt.message}
             </p>
           )}
         </div>
@@ -205,16 +322,18 @@ export function CreateSplitWizard({
                       "glass-input w-full rounded-xl px-4 py-3 text-sm",
                       addressError ? "border-red-500/50 bg-red-500/5" : "",
                     )}
+                    aria-invalid={Boolean(addressError)}
+                    aria-describedby={describedBy(addressError && `address-error-${field.id}`)}
                     {...register(`collaborators.${index}.address`, {
-                      required: "Wallet address is required.",
+                      required: t("addressRequired"),
                       validate: (value) =>
                         StrKey.isValidEd25519PublicKey(value) || StrKey.isValidContract(value)
                           ? true
-                          : "Enter a valid Stellar address or contract ID.",
+                          : t("invalidAddress"),
                     })}
                   />
                   {addressError && (
-                    <p className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
+                    <p id={`address-error-${field.id}`} className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
                       {addressError}
                     </p>
                   )}
@@ -233,12 +352,14 @@ export function CreateSplitWizard({
                       "glass-input w-full rounded-xl px-4 py-3 text-sm",
                       aliasError ? "border-red-500/50 bg-red-500/5" : "",
                     )}
+                    aria-invalid={Boolean(aliasError)}
+                    aria-describedby={describedBy(aliasError && `alias-error-${field.id}`)}
                     {...register(`collaborators.${index}.alias`, {
-                      required: "Alias is required.",
+                      required: t("aliasRequired"),
                     })}
                   />
                   {aliasError && (
-                    <p className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
+                    <p id={`alias-error-${field.id}`} className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
                       {aliasError}
                     </p>
                   )}
@@ -256,22 +377,30 @@ export function CreateSplitWizard({
                     min={0}
                     max={10_000}
                     placeholder="5000"
+                    aria-invalid={Boolean(basisPointsError) || (hasAttemptedSubmit && isTotalInvalid)}
+                    aria-describedby={describedBy(
+                      basisPointsError && `bp-error-${field.id}`,
+                      isTotalInvalid && "allocation-status",
+                    )}
                     className={clsx(
                       "glass-input w-full rounded-xl px-4 py-3 text-sm",
                       basisPointsError ? "border-red-500/50 bg-red-500/5" : "",
                     )}
                     {...register(`collaborators.${index}.basisPoints`, {
-                      required: "Share is required.",
+                      required: t("shareRequired"),
                       validate: (value) => {
+                        if (typeof value === "string" && (value.includes(".") || !/^\d+$/.test(value.trim()))) {
+                          return t("shareWholeInteger");
+                        }
                         const parsed = Number.parseInt(value, 10);
-                        if (!Number.isFinite(parsed) || parsed < 0) return "Share must be a valid number.";
-                        if (parsed > 10_000) return "Share cannot exceed 10,000.";
+                        if (!Number.isFinite(parsed) || parsed < 0) return t("shareValidNumber");
+                        if (parsed > 10_000) return t("shareMax");
                         return true;
                       },
                     })}
                   />
                   {basisPointsError && (
-                    <p className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
+                    <p id={`bp-error-${field.id}`} role="alert" className="px-1 text-[10px] font-bold text-red-400 uppercase tracking-tighter">
                       {basisPointsError}
                     </p>
                   )}
@@ -293,8 +422,29 @@ export function CreateSplitWizard({
           })}
         </div>
         <div className="flex flex-col items-end gap-3 px-4 py-6 rounded-3xl bg-white/2 border border-white/5">
-          <div className="flex items-center gap-4">
-            <span className="text-[10px] uppercase text-muted">Allocation Matrix</span>
+          <div className="flex flex-wrap items-center justify-between w-full gap-4">
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-bold tracking-[0.2em] text-muted">Allocation Matrix</span>
+              <p
+                id="allocation-status"
+                role="status"
+                aria-live="polite"
+                className={clsx(
+                  "text-xs font-semibold",
+                  totalBasisPoints === 10000 ? "text-greenBright" : "text-red-400",
+                )}
+              >
+                {totalBasisPoints === 10000
+                  ? t("sharesValid")
+                  : totalBasisPoints < 10000
+                    ? t("underAllocated", {
+                        remaining: (10000 - totalBasisPoints).toLocaleString(),
+                      })
+                    : t("overAllocated", {
+                        over: (totalBasisPoints - 10000).toLocaleString(),
+                      })}
+              </p>
+            </div>
             <div
               className={clsx(
                 "rounded-lg px-4 py-2 font-mono text-sm font-bold",
@@ -312,22 +462,37 @@ export function CreateSplitWizard({
       <div className="mt-12 pt-12 border-t border-white/5">
         {createRetryError && (
           <div role="status" className="mb-6 rounded-2xl border border-orange-400/40 bg-orange-500/10 p-4 text-sm">
-            <p className="font-semibold text-orange-200">Submission interrupted. Retry when your network is stable.</p>
+            <p className="font-semibold text-orange-200">
+              {isDuplicateProjectId
+                ? "Project ID already in use."
+                : "Submission interrupted. Retry when your network is stable."}
+            </p>
             <p className="mt-1 text-orange-100/90">{createRetryError}</p>
-            <button
-              type="button"
-              onClick={onRetryCreateSubmission}
-              disabled={isSubmitting || sorobanSplitFlowBusy}
-              className="mt-3 rounded-xl border border-orange-300/40 bg-orange-400/10 px-4 py-2 text-xs font-bold uppercase tracking-wider text-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Retry Submission
-            </button>
+            {!isDuplicateProjectId && (
+              <button
+                type="button"
+                onClick={onRetryCreateSubmission}
+                disabled={isSubmitting || sorobanSplitFlowBusy}
+                className="mt-3 rounded-xl border border-orange-300/40 bg-orange-400/10 px-4 py-2 text-xs font-bold uppercase tracking-wider text-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Retry Submission
+              </button>
+            )}
           </div>
         )}
+        {/*
+          Not `disabled` while the form is merely invalid: a disabled button
+          is skipped by Tab and gives no feedback, so keyboard and screen
+          reader users couldn't find out what's wrong. It's `aria-disabled`
+          instead, and pressing it reveals the error summary (#1267). It is
+          truly disabled while a submission is in flight (#1266).
+        */}
         <button
           type="submit"
-          disabled={!isValid || sorobanSplitFlowBusy}
-          className="premium-button w-full rounded-4xl bg-greenMid py-5 text-sm font-extrabold uppercase tracking-[0.25em] text-white shadow-2xl shadow-greenMid/20 disabled:cursor-not-allowed disabled:opacity-20"
+          disabled={sorobanSplitFlowBusy}
+          aria-disabled={!isValid || sorobanSplitFlowBusy}
+          aria-busy={isSubmitting || undefined}
+          className="premium-button w-full rounded-4xl bg-greenMid py-5 text-sm font-extrabold uppercase tracking-[0.25em] text-white shadow-2xl shadow-greenMid/20 disabled:cursor-not-allowed disabled:opacity-20 aria-disabled:cursor-not-allowed aria-disabled:opacity-20"
         >
           {isSubmitting ? (
             <div className="flex items-center justify-center gap-3">
@@ -371,7 +536,7 @@ export function CreateSplitWizard({
               </div>
               <p className="font-mono text-xs text-muted opacity-60 break-all">{createdProject.projectId}</p>
             </div>
-            <div className="text-right space-y-1">
+            <div className="text-end space-y-1">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Available Funds</p>
               <p className="text-3xl font-display text-greenBright">
                 {Number(createdProject.balance).toLocaleString()}{" "}
@@ -382,7 +547,7 @@ export function CreateSplitWizard({
 
           <div className="mt-8 grid gap-8 md:grid-cols-2">
             <div className="space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-muted border-l-2 border-greenBright pl-4">
+              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-muted border-s-2 border-greenBright ps-4">
                 Collaborators
               </h4>
               <div className="space-y-2">
@@ -401,7 +566,7 @@ export function CreateSplitWizard({
             </div>
 
             <div className="space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-muted border-l-2 border-greenBright pl-4">
+              <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-muted border-s-2 border-greenBright ps-4">
                 Project Metadata
               </h4>
               <div className="space-y-3">

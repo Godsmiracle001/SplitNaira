@@ -1068,7 +1068,7 @@ describe("#1266 duplicate payment submission protection", () => {
       await user.click(screen.getByRole("button", { name: "Create" }));
       await user.type(screen.getByLabelText("Project Identifier"), "idem_project");
       await user.type(screen.getByLabelText("Display Title"), "Idem Project");
-      await user.selectOptions(screen.getByLabelText(/Asset token/i), "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVHUBXNIHG3DBJ4F3CHWIQY2OJ5G");
+      await user.selectOptions(screen.getByLabelText(/Asset token/i), "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC");
       await user.type(screen.getByPlaceholderText("Recipient #1"), "GCOLLAB1");
       await user.type(screen.getByPlaceholderText("Recipient #2"), "GCOLLAB2");
       const aliases = screen.getAllByPlaceholderText("e.g. Lead Vocals");

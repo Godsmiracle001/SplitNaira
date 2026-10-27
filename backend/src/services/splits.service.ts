@@ -19,6 +19,7 @@ import {
   type UnsignedTxResponse
 } from "./stellar.js";
 import { assertProjectNotExpired, getProjectExpiration } from "./project-expiration.js";
+import { logger } from "./logger.js";
 
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
 
@@ -309,8 +310,16 @@ export async function fetchProjectById(projectId: string) {
       : null;
   });
   if (project === null || project === undefined || typeof project !== "object") return project;
-  const expiration = await getProjectExpiration(projectId);
-  return { ...(project as Record<string, unknown>), expiresAt: expiration?.expiresAt ?? null };
+  // Expiration is off-chain metadata. A database outage must not hide the
+  // on-chain project, so reads degrade to "unknown"; writes still enforce
+  // expiry through assertProjectNotExpired, which fails closed.
+  let expiresAt: string | null = null;
+  try {
+    expiresAt = (await getProjectExpiration(projectId))?.expiresAt ?? null;
+  } catch (error) {
+    logger.warn("Project expiration unavailable", { projectId, error });
+  }
+  return { ...(project as Record<string, unknown>), expiresAt };
 }
 
 /**

@@ -38,6 +38,7 @@ export function SplitApp() {
   // individual components poll independently.
   const { status: maintenanceStatus, isWriteDisabled, message: maintenanceMessage } =
     useMaintenanceStatus();
+  const connectionStatus = useConnectionStatus();
 
   const copy = useMemo(
     () =>

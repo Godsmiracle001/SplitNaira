@@ -6,6 +6,7 @@ import { splitsRouter } from "./splits.js";
 import { requestIdMiddleware } from "../middleware/request-id.js";
 import { errorHandler, notFoundHandler } from "../middleware/error.js";
 import { getCached, invalidateCacheByPrefix, setCached } from "../services/stellar.js";
+import { resetReadCacheForTests } from "../services/read-cache.js";
 
 const getAccountMock = vi.fn();
 const prepareTransactionMock = vi.fn();
@@ -19,7 +20,17 @@ const serverMock = {
   getEvents: getEventsMock,
 };
 
-vi.mock("@stellar/stellar-sdk", () => {
+// The expiration store is off-chain (Postgres); these route tests run without
+// a database, so model every project as non-expiring.
+vi.mock("../services/project-expiration.js", () => ({
+  assertProjectNotExpired: vi.fn().mockResolvedValue(undefined),
+  getProjectExpiration: vi.fn().mockResolvedValue(undefined),
+  recordSplitCreated: vi.fn().mockResolvedValue(undefined),
+  configureProjectExpiration: vi.fn().mockResolvedValue({ expiresAt: null }),
+}));
+
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const { StrKey } = await importOriginal<typeof import("@stellar/stellar-sdk")>();
   class ScMapEntry {
     key: unknown;
     val: unknown;
@@ -30,6 +41,8 @@ vi.mock("@stellar/stellar-sdk", () => {
   }
 
   return {
+    // Real StrKey: env and address validation depend on its checksum logic.
+    StrKey,
     Address: {
       fromString: vi.fn((address: string) => {
         if (!/^[GC][A-Z0-9_]+$/.test(address)) throw new Error("invalid address");
@@ -92,13 +105,16 @@ beforeAll(() => {
   process.env.HORIZON_URL = "https://horizon.test";
   process.env.SOROBAN_RPC_URL = "https://soroban.test";
   process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network";
-  process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+  process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
   process.env.SIMULATOR_ACCOUNT = "GTESTSIMULATOR";
   process.env.DATABASE_URL = "https://example.com/postgres";
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reads go through a shared cache; start every test from a cold cache so
+  // one test's simulated RPC responses never answer another's request.
+  resetReadCacheForTests();
 });
 
 describe("splits routes integration", () => {
@@ -169,7 +185,7 @@ describe("splits routes integration", () => {
     expect(response.body).toMatchObject({
       xdr: "XDR_CREATE",
       metadata: {
-        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
         networkPassphrase: "Test SDF Network",
         sourceAccount: "GOWNER",
         operation: "create_project",
@@ -329,14 +345,26 @@ describe("splits routes integration", () => {
 
     const app = createApp();
 
+    // Regression: the controller parsed the whole params object with the
+    // projectId string schema, so every lookup failed with 400.
     const response = await request(app).get("/splits/project_1").expect(200);
 
-    expect(response.body).toEqual({
+    expect(response.body).toMatchObject({
       projectId: "project_1",
       title: "Project 1",
       balance: "123",
+      // Off-chain enrichments: unknown here because no expiry or payouts exist.
+      expiresAt: null,
     });
+    expect(response.body).toHaveProperty("participantPaymentStatuses");
     expect(getAccountMock).toHaveBeenCalledWith("GTESTSIMULATOR");
+  });
+
+  it("rejects a malformed project id with 400 before touching the RPC", async () => {
+    const response = await request(createApp()).get("/splits/not-valid!").expect(400);
+
+    expect(response.body.error).toBe("validation_error");
+    expect(simulateTransactionMock).not.toHaveBeenCalled();
   });
 
   it("reads admin allowlist state", async () => {
@@ -390,7 +418,7 @@ describe("splits routes integration", () => {
     expect(response.body).toMatchObject({
       xdr: "XDR_ALLOW_TOKEN",
       metadata: {
-        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
         networkPassphrase: "Test SDF Network",
         sourceAccount: "GADMIN",
         operation: "allow_token",
@@ -418,7 +446,7 @@ describe("splits routes integration", () => {
     expect(response.body).toMatchObject({
       xdr: "XDR_DISALLOW_TOKEN",
       metadata: {
-        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
         networkPassphrase: "Test SDF Network",
         sourceAccount: "GADMIN",
         operation: "disallow_token",
@@ -593,9 +621,13 @@ describe("splits routes integration", () => {
  */
 function mockOnChainProjectOwner(owner: string) {
   invalidateCacheByPrefix("project:");
-  simulateTransactionMock.mockResolvedValue({
-    result: { retval: { owner, locked: false, collaborators: [] } },
-  });
+  simulateTransactionMock.mockImplementation(
+    async (tx: { preparedOperation?: { method?: string } }) =>
+      // fetchProjectById also reads the balance, which must decode as i128.
+      tx?.preparedOperation?.method === "get_balance"
+        ? { result: { retval: 0n } }
+        : { result: { retval: { owner, locked: false, collaborators: [] } } },
+  );
 }
 
 describe("Issue #174: lock & update permissions and owner gating", () => {

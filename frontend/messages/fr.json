@@ -75,5 +75,135 @@
         "overAllocated": "Sur-alloué : {over} PB au-delà de la limite"
       }
     }
+  },
+  "Landing": {
+    "nav": {
+      "how": "Fonctionnement",
+      "features": "Fonctionnalités",
+      "faq": "FAQ",
+      "openApp": "Ouvrir l’app",
+      "primary": "Principale"
+    },
+    "hero": {
+      "eyebrow": "Partage de royalties sur Stellar",
+      "title": "Convenez du partage une fois. Chacun est payé de la même façon, à chaque fois.",
+      "subtitle": "SplitNaira permet aux artistes, producteurs, auteurs nigérians et à leurs équipes d’enregistrer qui touche quoi sur un titre, un film ou un projet — puis verse automatiquement sa part à chaque collaborateur à chaque rentrée d’argent.",
+      "primaryCta": "Créer un partage",
+      "secondaryCta": "Voir le fonctionnement",
+      "note": "Gratuit. Vous ne payez que les frais du réseau Stellar pour chaque transaction signée."
+    },
+    "preview": {
+      "label": "Exemple illustratif — pas de données réelles",
+      "project": "« Lagos Nights » — single",
+      "deposit": "Royalties reçues",
+      "payouts": "Versé automatiquement",
+      "roles": {
+        "artist": "Artiste principal",
+        "producer": "Producteur",
+        "songwriter": "Auteur-compositeur"
+      }
+    },
+    "how": {
+      "title": "Fonctionnement",
+      "subtitle": "Quatre étapes de l’accord au versement.",
+      "steps": {
+        "one": {
+          "title": "Connectez votre portefeuille",
+          "body": "Connectez-vous avec un portefeuille Stellar comme Freighter. SplitNaira ne demande, ne voit ni ne stocke jamais votre clé secrète."
+        },
+        "two": {
+          "title": "Créez le partage",
+          "body": "Nommez le projet, choisissez le jeton de paiement et ajoutez l’adresse et la part de chaque collaborateur. Le total doit faire exactement 100 %."
+        },
+        "three": {
+          "title": "Déposez les revenus",
+          "body": "Quand les royalties arrivent, déposez-les dans le projet. Le solde est détenu par le contrat intelligent, pas par SplitNaira."
+        },
+        "four": {
+          "title": "Distribuez",
+          "body": "N’importe qui peut déclencher un versement. Le contrat envoie à chaque collaborateur sa part exacte en une transaction."
+        }
+      }
+    },
+    "features": {
+      "title": "Conçu pour les équipes créatives",
+      "subtitle": "Tout pour payer vos collaborateurs équitablement, avec une trace.",
+      "items": {
+        "projects": {
+          "title": "Projets",
+          "body": "Un projet par titre, album, film ou campagne, chacun avec son jeton, son solde et son historique de versements."
+        },
+        "collaborators": {
+          "title": "Collaborateurs",
+          "body": "Ajoutez artistes, producteurs, auteurs et managers par adresse, avec un alias lisible pour chacun."
+        },
+        "allocation": {
+          "title": "Répartitions exactes",
+          "body": "Les parts sont en points de base (1 pb = 0,01 %), donc une part de 33,33 % est stockée exactement. Pas d’arrondi surprise."
+        },
+        "tracking": {
+          "title": "Suivi des paiements",
+          "body": "Consultez soldes, tours et paiements envoyés, avec un état de confirmation pour chaque transaction signée."
+        },
+        "transparency": {
+          "title": "Traces vérifiables",
+          "body": "Chaque dépôt et versement est une transaction Stellar publique consultable dans un explorateur de blocs."
+        },
+        "control": {
+          "title": "Verrouillez une fois finalisé",
+          "body": "Quand l’accord est conclu, verrouillez le projet : le partage ne pourra plus jamais être modifié."
+        }
+      }
+    },
+    "stellar": {
+      "title": "Pourquoi Stellar et Soroban ?",
+      "body": "Les règles de partage vivent dans un contrat intelligent Soroban sur le réseau Stellar. Une fois le projet créé, les versements suivent ces règles — SplitNaira ne peut ni détourner les fonds ni modifier les parts. Les transactions Stellar se règlent en quelques secondes pour des frais réseau très faibles.",
+      "caveat": "Un contrat intelligent supprime un intermédiaire, pas tous les risques : vérifiez toujours les adresses des collaborateurs avant de créer ou de verrouiller un partage."
+    },
+    "trust": {
+      "title": "Ce sur quoi vous pouvez compter",
+      "items": {
+        "nonCustodial": "Non dépositaire — votre portefeuille signe chaque transaction",
+        "noFee": "Aucune commission prélevée sur les versements",
+        "openSource": "Open source sous licence MIT",
+        "status": "En développement actif — essayez d’abord sur le testnet"
+      }
+    },
+    "faq": {
+      "title": "Questions fréquentes",
+      "items": {
+        "currency": {
+          "q": "Dans quelle devise sont les versements ?",
+          "a": "Dans le jeton Stellar choisi à la création du projet, par exemple XLM. L’administrateur du contrat peut restreindre les jetons autorisés."
+        },
+        "wallet": {
+          "q": "Chaque collaborateur a-t-il besoin d’un portefeuille ?",
+          "a": "Oui. Chaque collaborateur est identifié par une adresse Stellar, où sa part est envoyée."
+        },
+        "change": {
+          "q": "Peut-on modifier un partage ensuite ?",
+          "a": "Le propriétaire peut modifier collaborateurs et parts tant que le projet n’est pas verrouillé. Le verrouillage est définitif."
+        },
+        "fees": {
+          "q": "Combien ça coûte ?",
+          "a": "SplitNaira ne prend aucune commission. Chaque transaction signée paie de petits frais réseau Stellar en XLM."
+        },
+        "failed": {
+          "q": "Que se passe-t-il si une transaction échoue ?",
+          "a": "Rien n’est affiché comme payé avant la confirmation du réseau. Si une transaction échoue ou que son issue est inconnue, l’app l’indique et bloque une double soumission jusqu’à sa résolution."
+        }
+      }
+    },
+    "cta": {
+      "title": "Prêt à créer votre premier partage ?",
+      "body": "Connectez un portefeuille et créez un projet en quelques minutes.",
+      "button": "Ouvrir l’app"
+    },
+    "footer": {
+      "tagline": "Le partage de royalties pour l’économie créative nigériane.",
+      "source": "Code source",
+      "security": "Politique de sécurité",
+      "rights": "Publié sous licence MIT."
+    }
   }
 }

@@ -11,8 +11,11 @@ import SwaggerParser from "@apidevtools/swagger-parser";
  * CI instead of surprising clients in production.
  */
 
-vi.mock("@stellar/stellar-sdk", () => {
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const { StrKey } = await importOriginal<typeof import("@stellar/stellar-sdk")>();
   return {
+    // Real StrKey: env and address validation depend on its checksum logic.
+    StrKey,
     Address: {
       fromString: vi.fn((address) => ({
         toScVal: () => ({ address }),
@@ -63,7 +66,7 @@ vi.mock("../services/stellar.js", async (importOriginal) => {
       horizonUrl: "http://horizon",
       sorobanRpcUrl: "http://rpc",
       networkPassphrase: "test",
-      contractId: "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR",
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       simulatorAccount: "test_account",
     })),
     getStellarRpcServer: vi.fn(() => ({
@@ -166,7 +169,7 @@ function documentedTopLevelKeys(
 beforeAll(() => {
   process.env.DATABASE_URL = "https://example.com/postgres";
   process.env.SIMULATOR_ACCOUNT = "GD5T6IPRNCKFOHQ3STZ5BTEYI5V6U5U6U5U6U5U6U5U6U5U6U5U6U5U6";
-  process.env.CONTRACT_ID = "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR";
+  process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
   process.env.HORIZON_URL = "https://horizon-testnet.stellar.org";
   process.env.SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org";
   process.env.SOROBAN_NETWORK_PASSPHRASE = "test";
@@ -183,7 +186,7 @@ describe("Issue #1461: API contract against generated OpenAPI", () => {
   });
 
   it("documents the operations the API is expected to serve", () => {
-    const spec = generateOpenApi() as Spec;
+    const spec = generateOpenApi() as unknown as Spec;
     const expected: Array<[string, string]> = [
       ["get", "/splits"],
       ["post", "/splits"],
@@ -213,7 +216,7 @@ describe("Issue #1461: API contract against generated OpenAPI", () => {
   });
 
   it("every documented operation declares at least one success response", () => {
-    const spec = generateOpenApi() as Spec;
+    const spec = generateOpenApi() as unknown as Spec;
 
     for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
       for (const [method, operation] of Object.entries(pathItem)) {
@@ -259,7 +262,7 @@ describe("Issue #1461: API contract against generated OpenAPI", () => {
 
     for (const contract of contracts) {
       it(`GET ${contract.requestPath} matches its documented schema`, async () => {
-        const spec = generateOpenApi() as Spec;
+        const spec = generateOpenApi() as unknown as Spec;
         const res = await request(app).get(contract.requestPath);
 
         expect(res.status).toBe(Number(contract.status));
@@ -280,7 +283,7 @@ describe("Issue #1461: API contract against generated OpenAPI", () => {
   });
 
   it("serves the stable unknown-route 404 contract", async () => {
-    const spec = generateOpenApi() as Spec;
+    const spec = generateOpenApi() as unknown as Spec;
     const res = await request(app).get("/this/route/is/not/documented");
 
     expect(res.status).toBe(404);

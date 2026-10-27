@@ -39,7 +39,7 @@ describe("deploy-config utility", () => {
         deployEnvironment: "production",
         secrets: {
           RENDER_BACKEND_DEPLOY_HOOK_URL: "https://example.com/deploy",
-          MAINNET_CONTRACT_ID: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          MAINNET_CONTRACT_ID: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4"
         }
       })
     ).not.toThrow();

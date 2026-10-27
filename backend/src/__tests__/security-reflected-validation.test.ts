@@ -10,7 +10,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { app } from "../index.js";
 
-vi.mock("@stellar/stellar-sdk", () => ({
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => ({
+  // Real StrKey: env and address validation depend on its checksum logic.
+  StrKey: (await importOriginal<typeof import("@stellar/stellar-sdk")>()).StrKey,
   Address: {
     fromString: vi.fn(() => ({})),
   },

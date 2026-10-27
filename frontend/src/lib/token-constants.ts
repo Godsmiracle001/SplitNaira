@@ -8,45 +8,30 @@ export interface TokenInfo {
   code: string;
 }
 
+/**
+ * Preset tokens offered by the token picker.
+ *
+ * Only addresses that can be verified are listed. The native XLM entries are
+ * the Stellar Asset Contract IDs derived with
+ * `Asset.native().contractId(Networks.TESTNET | Networks.PUBLIC)`. The
+ * previous list held USDC/EURC IDs that failed StrKey checksum validation, so
+ * a user picking them could never create a working split. Add issued assets
+ * only after deriving their ID from the issuer (`new Asset(code, issuer)
+ * .contractId(passphrase)`) or copying it from the issuer's documentation;
+ * token-constants.test.ts rejects any entry that does not checksum.
+ */
 export const KNOWN_TOKENS: TokenInfo[] = [
-  // Testnet tokens
   {
-    id: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVHUBXNIHG3DBJ4F3CHWIQY2OJ5G",
+    id: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
     name: "Native Stellar Lumens",
     network: "testnet",
     code: "XLM",
   },
   {
-    id: "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR",
-    name: "USD Coin",
-    network: "testnet",
-    code: "USDC",
-  },
-  {
-    id: "CDLZJQG2OZZXZAU3YICESOJE73SOXREH74DRBEDAFTMPAQWX3JD3YQ",
-    name: "Euro Coin",
-    network: "testnet",
-    code: "EURC",
-  },
-
-  // Mainnet tokens
-  {
-    id: "CAS3FL6TLZKDGGSISDBWGGPXT3NRR4DYTZD7YODSVGR2UUT5GQOUY3YM",
+    id: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
     name: "Native Stellar Lumens",
     network: "mainnet",
     code: "XLM",
-  },
-  {
-    id: "CBBD3L2DQADRDX3CI4UJL3XNPVVVMMB7VPZL3DQUMHWQ6XGYWYSGPBEM",
-    name: "USD Coin",
-    network: "mainnet",
-    code: "USDC",
-  },
-  {
-    id: "CAQLY5C7KDNHBX64CTMZ7JVYQSXC3MSWQJ5XLPZ7KUG2LSX2DTG3GXM",
-    name: "Euro Coin",
-    network: "mainnet",
-    code: "EURC",
   },
 ];
 

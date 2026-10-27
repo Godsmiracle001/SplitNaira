@@ -352,8 +352,16 @@ fn prop_fuzz_amount_and_allocation_boundaries() {
         let a2 = Address::generate(&env);
 
         let mut collabs = Vec::new(&env);
-        collabs.push_back(Collaborator { address: a1.clone(), share_bps: c1_bps });
-        collabs.push_back(Collaborator { address: a2.clone(), share_bps: c2_bps });
+        collabs.push_back(Collaborator {
+            address: a1.clone(),
+            alias: String::from_str(&env, "edge_a"),
+            basis_points: c1_bps,
+        });
+        collabs.push_back(Collaborator {
+            address: a2.clone(),
+            alias: String::from_str(&env, "edge_b"),
+            basis_points: c2_bps,
+        });
 
         let project_id = s.create("fuzz_boundary", &collabs);
         let funder = Address::generate(&env);
@@ -362,7 +370,11 @@ fn prop_fuzz_amount_and_allocation_boundaries() {
         let fuzzed_amount = rng.range(1, 5_000_000_000_000) as i128;
         s.deposit(&project_id, &funder, fuzzed_amount);
 
-        assert_eq!(s.client.get_balance(&project_id), fuzzed_amount, "seed={seed}");
+        assert_eq!(
+            s.client.get_balance(&project_id),
+            fuzzed_amount,
+            "seed={seed}"
+        );
         s.client.distribute(&project_id);
 
         // Verify full liquidation and zero remainder leakage

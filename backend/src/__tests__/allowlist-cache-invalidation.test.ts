@@ -28,7 +28,9 @@ const getAccountMock = vi.fn();
 const prepareTransactionMock = vi.fn();
 const simulateTransactionMock = vi.fn();
 
-vi.mock("@stellar/stellar-sdk", () => ({
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => ({
+  // Real StrKey: env and address validation depend on its checksum logic.
+  StrKey: (await importOriginal<typeof import("@stellar/stellar-sdk")>()).StrKey,
   Address: {
     fromString: vi.fn((address: string) => {
       if (!/^[GC][A-Z0-9_]+$/.test(address)) throw new Error("invalid address");

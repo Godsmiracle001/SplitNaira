@@ -26,17 +26,23 @@ SplitNaira is in active development. This repo currently contains:
 ### Option 1: Docker Compose (Recommended for demos and pre-deployment checks)
 
 ```bash
-# Copy the environment template
+# Copy the environment template, then set CONTRACT_ID and SIMULATOR_ACCOUNT.
+# The backend will not start without them, and the frontend waits for it.
 cp .env.compose.example .env.local
 
 # Start the entire stack (Postgres + Backend + Frontend)
-docker compose up
+docker compose --env-file .env.local up --build
 
 # Access the services:
-# - Frontend: http://localhost:3000
+# - Website:     http://localhost:3000            (redirects to /en)
+# - Application: http://localhost:3000/en/app
 # - Backend API: http://localhost:3001
-# - API Docs: http://localhost:3001/api/docs
+# - API Docs:    http://localhost:3001/api/docs
 ```
+
+> The repository does not record a live contract deployment
+> (`contracts/deployments.json` is a placeholder). Deploy the contract to
+> testnet first — see [Contract Setup](./docs/SOROBAN_SETUP.md) — and use its ID.
 
 ### Option 2: Local Development
 
@@ -273,9 +279,40 @@ Use it as a pre-deployment gate during release and rollback planning.
 
 ```bash
 npm install
-npm run verify:env
+cp backend/.env.example backend/.env      # fill in CONTRACT_ID, SIMULATOR_ACCOUNT, DATABASE_URL
+cp frontend/.env.example frontend/.env.local
 npm run dev
 ```
+
+The backend validates its environment at startup and prints every missing or
+invalid variable. `CONTRACT_ID` is checked against its StrKey checksum, so a
+mistyped ID fails fast instead of on the first RPC call.
+
+### Application routes
+
+| Route | What it is |
+|-------|------------|
+| `/{locale}` | Public website (`en`, `fr`) |
+| `/{locale}/app` | Wallet-connected application: dashboard, create, manage & distribute, projects |
+| `/{locale}/dashboard/settings` | Account settings |
+| `/{locale}/receipts/{txHash}` | Printable transaction receipt |
+
+### Amounts and precision
+
+Token amounts are handled as integers of stroops (1 token = 10,000,000
+stroops). The frontend parses user input with `bigint`
+(`frontend/src/lib/amounts.ts`) and the backend stores amounts as validated
+decimal strings (`backend/src/lib/decimal-amounts.ts`); floating-point maths is
+never used to compute what is sent on-chain. The payout preview mirrors the
+contract rule: each collaborator receives `floor(balance × bps / 10000)` and the
+last collaborator receives the remainder.
+
+### Transaction states
+
+Every wallet-signed action resolves only after the network confirms it. A
+transaction whose outcome is unknown (poll timeout or malformed RPC response)
+is shown as unconfirmed, and the same action stays blocked until "Check status"
+finds a final result, so a retry cannot pay twice.
 
 ## Code Quality
 
@@ -287,8 +324,26 @@ npm run test
 ## Bundle Analysis
 
 ```bash
-npm run analyze
+npm run analyze:bundle -w frontend
 ```
+
+## Known limitations
+
+- **No recorded deployment.** `contracts/deployments.json` is a placeholder;
+  deploy the contract and set `CONTRACT_ID` yourself.
+- **Token presets.** The token picker only lists the native XLM asset contract
+  for each network (derived, verifiable IDs). Add issued assets such as USDC
+  only after verifying their contract ID.
+- **Project edit history records intent.** `project_edit_history` rows for
+  lock, metadata and collaborator changes are written when the unsigned
+  transaction is prepared, not when it confirms on-chain.
+- **Off-chain ownership transfer is advisory.** `POST /collaboration/projects/:id/transfer-ownership`
+  re-syncs the owner from chain and does not submit the contract's
+  `transfer_project_ownership`; the on-chain owner remains authoritative.
+- **Light theme.** The interface ships a single dark theme.
+- **Windows paths containing `&`.** npm's `.cmd` shims break when the checkout
+  path contains `&`. Install with `npm ci --ignore-scripts` and invoke tools
+  with `node node_modules/<tool>/...`, or use a path without `&`.
 
 ## Documentation
 

@@ -162,6 +162,10 @@ export interface EmailFlowTokenClaims {
    * same second.
    */
   jti?: string;
+  /** User id an email-change token was issued for. */
+  uid?: string;
+  /** Normalized email address an email-change token replaces. */
+  prev?: string;
 }
 
 export function signEmailFlowToken(
@@ -184,6 +188,8 @@ export function verifyEmailFlowToken(
       purpose?: string;
       sv?: unknown;
       jti?: unknown;
+      uid?: unknown;
+      prev?: unknown;
     };
     if (payload.purpose !== expectedPurpose || !payload.email) {
       return null;
@@ -193,6 +199,8 @@ export function verifyEmailFlowToken(
       email: payload.email,
       ...(typeof payload.sv === "number" ? { sv: payload.sv } : {}),
       ...(typeof payload.jti === "string" ? { jti: payload.jti } : {}),
+      ...(typeof payload.uid === "string" ? { uid: payload.uid } : {}),
+      ...(typeof payload.prev === "string" ? { prev: payload.prev } : {}),
     };
   } catch {
     return null;

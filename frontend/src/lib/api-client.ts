@@ -467,12 +467,21 @@ export class ApiClient {
     return mapProjectToCamelCase(raw);
   }
 
+  /**
+   * Fetches every project by paging through `GET /splits`. The backend caps
+   * `limit` at 100 and defaults it to 10, so a single unparameterised call
+   * would silently drop projects.
+   */
   async getAllSplits(): Promise<SplitProject[]> {
-    const raws = await this.requestJson<Record<string, unknown>[]>(
-      "/splits",
-      "Failed to fetch projects",
-    );
-    return raws.map(mapProjectToCamelCase);
+    const pageSize = 100;
+    const maxPages = 20;
+    const all: SplitProject[] = [];
+    for (let page = 0; page < maxPages; page++) {
+      const batch = await this.listProjects({ start: page * pageSize, limit: pageSize });
+      all.push(...batch);
+      if (batch.length < pageSize) break;
+    }
+    return all;
   }
 
   async listProjects(
@@ -484,11 +493,11 @@ export class ApiClient {
     if (params?.search !== undefined && params.search) query.set("search", params.search);
     if (params?.type !== undefined && params.type) query.set("type", params.type);
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    const raws = await this.requestJson<Record<string, unknown>[]>(
+    const body = await this.requestJson<unknown>(
       `/splits${suffix}`,
       "Failed to fetch projects",
     );
-    return raws.map(mapProjectToCamelCase);
+    return unwrapProjectList(body).map(mapProjectToCamelCase);
   }
 
   async getClaimable(
@@ -516,10 +525,24 @@ export class ApiClient {
     start = 0,
     limit = 100,
   ): Promise<TokenAllowlistState> {
-    return this.requestJson<TokenAllowlistState>(
+    // The backend reports the total as `count` (AdminAllowlistResponseSchema).
+    const body = await this.requestJson<{
+      admin: string | null;
+      count?: number;
+      allowedTokenCount?: number;
+      tokens?: string[];
+    }>(
       `/splits/admin/allowlist?start=${start}&limit=${limit}`,
       "Failed to fetch token allowlist",
     );
+    const tokens = Array.isArray(body?.tokens) ? body.tokens : [];
+    return {
+      admin: body?.admin ?? null,
+      allowedTokenCount: body?.count ?? body?.allowedTokenCount ?? tokens.length,
+      tokens,
+      start,
+      limit,
+    };
   }
 
   async getAdminStatus(): Promise<AdminStatusState> {
@@ -638,6 +661,18 @@ function numberFrom(value: unknown, fallback = 0): number {
 function booleanFrom(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
+/**
+ * `GET /splits` responds with `{ projects, total, nextCursor }`. A bare array
+ * is still accepted so older backends keep working.
+ */
+export function unwrapProjectList(body: unknown): Record<string, unknown>[] {
+  if (Array.isArray(body)) return body as Record<string, unknown>[];
+  if (body && typeof body === "object" && Array.isArray((body as { projects?: unknown }).projects)) {
+    return (body as { projects: Record<string, unknown>[] }).projects;
+  }
+  throw new ApiError(502, "Unexpected response shape from /splits.", "invalid_response");
+}
+
 function mapProjectToCamelCase(p: Record<string, unknown>): SplitProject {
   const collaborators = Array.isArray(p.collaborators)
     ? (p.collaborators as Record<string, unknown>[])

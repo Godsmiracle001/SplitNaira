@@ -6,7 +6,7 @@ import { markStartupComplete } from "../routes/health.js";
 
 process.env.DATABASE_URL = "https://example.com/postgres";
 process.env.SIMULATOR_ACCOUNT = "GD5T6IPRNCKFOHQ3STZ5BTEYI5V6U5U6U5U6U5U6U5U6U5U6U5U6U5U6";
-process.env.CONTRACT_ID = "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR";
+process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 process.env.HORIZON_URL = "https://horizon-testnet.stellar.org";
 process.env.SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org";
 process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
@@ -14,7 +14,9 @@ process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
 const mockAuditSave = vi.fn().mockResolvedValue(undefined);
 const mockAuditCreate = vi.fn((data: unknown) => data);
 
-vi.mock("@stellar/stellar-sdk", () => ({
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => ({
+  // Real StrKey: env and address validation depend on its checksum logic.
+  StrKey: (await importOriginal<typeof import("@stellar/stellar-sdk")>()).StrKey,
   Address: {
     fromString: vi.fn((address: string) => ({
       toScVal: () => ({ address }),
@@ -66,7 +68,7 @@ vi.mock("../services/stellar.js", async (importOriginal) => {
       horizonUrl: "http://horizon",
       sorobanRpcUrl: "http://rpc",
       networkPassphrase: "test",
-      contractId: "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR",
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       simulatorAccount: "test_account"
     })),
     getStellarRpcServer: vi.fn(() => ({

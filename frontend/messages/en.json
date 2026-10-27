@@ -75,5 +75,135 @@
         "overAllocated": "Over-allocated: {over} BP over limit"
       }
     }
+  },
+  "Landing": {
+    "nav": {
+      "how": "How it works",
+      "features": "Features",
+      "faq": "FAQ",
+      "openApp": "Open app",
+      "primary": "Primary"
+    },
+    "hero": {
+      "eyebrow": "Royalty splitting on Stellar",
+      "title": "Agree the split once. Everyone gets paid the same way, every time.",
+      "subtitle": "SplitNaira lets Nigerian artists, producers, songwriters and their teams record who earns what from a song, film or project — then pays each collaborator their share automatically whenever money comes in.",
+      "primaryCta": "Create a split",
+      "secondaryCta": "See how it works",
+      "note": "Free to use. You only pay the Stellar network fee for each transaction you sign."
+    },
+    "preview": {
+      "label": "Illustrative example — not real account data",
+      "project": "“Lagos Nights” — single",
+      "deposit": "Incoming royalties",
+      "payouts": "Paid out automatically",
+      "roles": {
+        "artist": "Lead artist",
+        "producer": "Producer",
+        "songwriter": "Songwriter"
+      }
+    },
+    "how": {
+      "title": "How it works",
+      "subtitle": "Four steps from agreement to payout.",
+      "steps": {
+        "one": {
+          "title": "Connect your wallet",
+          "body": "Sign in with a Stellar wallet such as Freighter. SplitNaira never asks for, sees or stores your secret key."
+        },
+        "two": {
+          "title": "Create the split",
+          "body": "Name the project, choose the token you are paid in, and add each collaborator’s address and share. Shares must add up to exactly 100%."
+        },
+        "three": {
+          "title": "Deposit earnings",
+          "body": "When royalties arrive, deposit them into the project. The balance is held by the smart contract, not by SplitNaira."
+        },
+        "four": {
+          "title": "Distribute",
+          "body": "Anyone can trigger a payout. The contract sends every collaborator their exact share in one transaction."
+        }
+      }
+    },
+    "features": {
+      "title": "Built for creative teams",
+      "subtitle": "Everything you need to keep collaborators paid fairly and on record.",
+      "items": {
+        "projects": {
+          "title": "Projects",
+          "body": "One project per song, album, film or campaign, each with its own token, balance and payout history."
+        },
+        "collaborators": {
+          "title": "Collaborators",
+          "body": "Add artists, producers, writers and managers by wallet address, with a readable alias for each."
+        },
+        "allocation": {
+          "title": "Exact allocations",
+          "body": "Shares are set in basis points (1 bp = 0.01%), so a split like 33.33% is stored exactly. No rounding surprises."
+        },
+        "tracking": {
+          "title": "Payment tracking",
+          "body": "See balances, rounds and every payment sent, with a confirmation state for each transaction you sign."
+        },
+        "transparency": {
+          "title": "Verifiable records",
+          "body": "Every deposit and payout is a public Stellar transaction you can open in a block explorer."
+        },
+        "control": {
+          "title": "Lock when final",
+          "body": "When the agreement is settled, lock the project so the split can never be changed again."
+        }
+      }
+    },
+    "stellar": {
+      "title": "Why Stellar and Soroban?",
+      "body": "The split rules live in a Soroban smart contract on the Stellar network. Once a project is created, payouts follow those rules — SplitNaira cannot redirect funds or change shares on its own. Stellar transactions settle in seconds for a very small network fee.",
+      "caveat": "A smart contract removes a middleman, not every risk: always double-check collaborator addresses before you create or lock a split."
+    },
+    "trust": {
+      "title": "What you can rely on",
+      "items": {
+        "nonCustodial": "Non-custodial — your wallet signs every transaction",
+        "noFee": "No platform fee taken from payouts",
+        "openSource": "Open source under the MIT licence",
+        "status": "In active development — try it on testnet first"
+      }
+    },
+    "faq": {
+      "title": "Frequently asked questions",
+      "items": {
+        "currency": {
+          "q": "Which currency are payouts in?",
+          "a": "Payouts are in the Stellar token you choose when creating the project, such as XLM. The contract admin can restrict which tokens are allowed."
+        },
+        "wallet": {
+          "q": "Does every collaborator need a wallet?",
+          "a": "Yes. Each collaborator is identified by a Stellar address, which is where their share is sent."
+        },
+        "change": {
+          "q": "Can a split be changed later?",
+          "a": "The project owner can update collaborators and shares until the project is locked. Locking is permanent."
+        },
+        "fees": {
+          "q": "What does it cost?",
+          "a": "SplitNaira does not take a cut. Each transaction you sign pays a small Stellar network fee in XLM."
+        },
+        "failed": {
+          "q": "What happens if a transaction fails?",
+          "a": "Nothing is shown as paid until the network confirms it. If a transaction fails or its outcome is unknown, the app says so and blocks a duplicate submission until it is resolved."
+        }
+      }
+    },
+    "cta": {
+      "title": "Ready to set up your first split?",
+      "body": "Connect a wallet and create a project in a few minutes.",
+      "button": "Open the app"
+    },
+    "footer": {
+      "tagline": "Royalty splitting for Nigeria’s creative economy.",
+      "source": "Source code",
+      "security": "Security policy",
+      "rights": "Released under the MIT licence."
+    }
   }
 }

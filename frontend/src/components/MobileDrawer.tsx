@@ -45,14 +45,18 @@ export function MobileDrawer({ isOpen, onClose, children }: MobileDrawerProps) {
         aria-hidden="true"
       />
 
-      {/* Drawer */}
+      {/* Drawer. Content is unmounted while closed so off-screen links are
+          never reachable by Tab or announced by screen readers. */}
       <div
+        role={isOpen ? "dialog" : undefined}
+        aria-modal={isOpen ? true : undefined}
+        aria-label={isOpen ? "Menu" : undefined}
         className={clsx(
           "fixed inset-y-0 left-0 w-64 bg-[var(--brand-surface)] z-40 transform transition-transform duration-300 ease-in-out md:hidden",
           isOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        {children}
+        {isOpen ? children : null}
       </div>
     </>
   );

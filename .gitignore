@@ -16,6 +16,7 @@ contracts/test_snapshots/
 .env.local
 .env.*
 !.env.example
+!.env.compose.example
 
 # Misc
 .DS_Store

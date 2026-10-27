@@ -12,7 +12,9 @@ import {
 } from "../schemas/splits.js";
 import { sanitizeString } from "../lib/sanitize.js";
 
-vi.mock("@stellar/stellar-sdk", () => ({
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => ({
+  // Real StrKey: env and address validation depend on its checksum logic.
+  StrKey: (await importOriginal<typeof import("@stellar/stellar-sdk")>()).StrKey,
   Address: {
     fromString: vi.fn(() => ({})),
   },

@@ -10,13 +10,13 @@ import { LoadingBar } from "@/components/LoadingBar";
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
-  variable: "--font-sans",
+  variable: "--font-sans-family",
   display: "swap",
 });
 
 const syne = Syne({
   subsets: ["latin"],
-  variable: "--font-display",
+  variable: "--font-display-family",
   display: "swap",
 });
 
