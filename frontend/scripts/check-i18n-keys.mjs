@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Issue #872 & Issue: validation locale parity
 // Fails CI when a locale's message keys drift from the base locale (en),
 // or when translation values contain empty strings, missing required wizard validation

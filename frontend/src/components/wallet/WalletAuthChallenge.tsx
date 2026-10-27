@@ -383,7 +383,7 @@ export function WalletAuthChallenge({
         )}
 
         {/* Refresh: shown when expired or manual refresh requested */}
-        {(isExpired || status === "expired") && (
+        {isExpired && (
           <button
             type="button"
             onClick={() => void handleRefresh()}

@@ -4,7 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const frontendDir = path.resolve(__dirname, "..");
+// This file lives in src/__tests__, two levels below the frontend root.
+const frontendDir = path.resolve(__dirname, "..", "..");
 const configPath = path.resolve(frontendDir, "bundle-budget.config.json");
 
 describe("frontend bundle budget", () => {
@@ -25,7 +26,7 @@ describe("frontend bundle budget", () => {
 
   it("bundle sizes are defined for critical entry points", () => {
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    const bundleNames = config.bundles.map((b) => b.name);
+    const bundleNames = config.bundles.map((b: { name: string }) => b.name);
 
     expect(bundleNames).toContain("main");
     expect(bundleNames).toContain("vendor");

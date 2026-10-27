@@ -2,9 +2,13 @@
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useFieldArray, useForm } from "react-hook-form";
 import { NextIntlClientProvider } from "next-intl";
+
+// This suite checks real per-locale rendering, so it opts out of the global
+// English-only next-intl mock in src/test/setup.ts.
+vi.unmock("next-intl");
 
 import { CreateSplitWizard } from "./CreateSplitWizardLegacy";
 import type { WalletState } from "@/lib/wallet";
@@ -66,6 +70,8 @@ function LocalizedHarness({
     mode: "onChange",
   });
   const { fields, append, remove } = useFieldArray({ control, name: "collaborators" });
+  // react-hook-form's watch() cannot be memoized by the React Compiler; fine in a test harness.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const watchedCollaborators = watch("collaborators") || [];
 
   const totalBasisPoints = watchedCollaborators.reduce((sum, col) => {

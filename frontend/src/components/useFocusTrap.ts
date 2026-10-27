@@ -20,6 +20,8 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, isOpen: boolean
     if (focusable.length > 0) {
       focusable[0].focus();
     } else {
+      // A plain container ignores focus() unless it has a tabindex.
+      if (!modal.hasAttribute("tabindex")) modal.setAttribute("tabindex", "-1");
       modal.focus();
     }
 

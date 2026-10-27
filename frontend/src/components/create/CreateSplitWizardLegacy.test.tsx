@@ -126,6 +126,8 @@ function InteractiveHarness({
     mode: "onChange",
   });
   const { fields, append, remove } = useFieldArray({ control, name: "collaborators" });
+  // react-hook-form's watch() cannot be memoized by the React Compiler; fine in a test harness.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const watchedCollaborators = watch("collaborators") || [];
 
   const totalBasisPoints = watchedCollaborators.reduce((sum, col) => {

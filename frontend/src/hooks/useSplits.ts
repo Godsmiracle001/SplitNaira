@@ -112,7 +112,10 @@ export function useSplitMutation<TVars extends SplitMutationContext, TResult>(
 ) {
   const queryClient = useOptionalQueryClient();
   const accountRef = useRef(currentAccount);
-  accountRef.current = currentAccount;
+  // Updated after commit (not during render); onSuccess always runs later.
+  useEffect(() => {
+    accountRef.current = currentAccount;
+  }, [currentAccount]);
 
   return useMutation({
     mutationKey: ["split-mutation", action],
