@@ -21,7 +21,7 @@ import type { Request } from "express";
 // ── Environment stubs ────────────────────────────────────────────────────────
 process.env.DATABASE_URL = "https://example.com/postgres";
 process.env.SIMULATOR_ACCOUNT = "GD5T6IPRNCKFOHQ3STZ5BTEYI5V6U5U6U5U6U5U6U5U6U5U6U5U6U5U6";
-process.env.CONTRACT_ID = "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR";
+process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 process.env.HORIZON_URL = "https://horizon-testnet.stellar.org";
 process.env.SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org";
 process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
@@ -84,7 +84,7 @@ vi.mock("../services/stellar.js", async (importOriginal) => {
       horizonUrl: "http://horizon",
       sorobanRpcUrl: "http://rpc",
       networkPassphrase: "test",
-      contractId: "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR",
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       simulatorAccount: "test_account",
     })),
     getStellarRpcServer: vi.fn(() => ({
@@ -158,6 +158,21 @@ describe("redactSensitivePayload", () => {
     expect(result.apiKey).toBe("[REDACTED]");
     expect(result.xdr).toBe("[REDACTED]");
     expect(result.signature).toBe("[REDACTED]");
+  });
+
+  it("normalises hyphenated and snake_case keys before matching", () => {
+    // Regression: matching only lowercased the key, so these reached the log.
+    const result = redactSensitivePayload({
+      "api-key": "k1",
+      "Private-Key": "k2",
+      secret_key: "k3",
+      nested: { Api_Key: "k4", amount: "5" },
+    });
+
+    expect(result["api-key"]).toBe("[REDACTED]");
+    expect(result["Private-Key"]).toBe("[REDACTED]");
+    expect(result.secret_key).toBe("[REDACTED]");
+    expect(result.nested).toEqual({ Api_Key: "[REDACTED]", amount: "5" });
   });
 
   it("redacts nested sensitive keys one level deep", () => {

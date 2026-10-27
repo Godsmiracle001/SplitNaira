@@ -15,7 +15,7 @@ import { markStartupComplete } from "../routes/health.js";
 // ── Environment stubs ────────────────────────────────────────────────────────
 process.env.DATABASE_URL = "postgres://example.com/test";
 process.env.SIMULATOR_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1";
-process.env.CONTRACT_ID = "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR";
+process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 process.env.HORIZON_URL = "https://horizon-testnet.stellar.org";
 process.env.SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org";
 process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
@@ -68,7 +68,7 @@ vi.mock("../services/stellar.js", async (importOriginal) => {
       horizonUrl: "http://horizon",
       sorobanRpcUrl: "http://rpc",
       networkPassphrase: "test",
-      contractId: "CBLASIRZ7CUKC7S5IS3VSNMQGKZ5FTRWLHZZXH7H4YG6ZLRFPJF5H2LR",
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       simulatorAccount: "test_account",
     })),
     getStellarRpcServer: vi.fn(() => ({

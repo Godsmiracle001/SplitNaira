@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Writable } from "node:stream";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import winston from "winston";
 import { logger } from "../services/logger.js";
 
 const sensitiveFields = [
@@ -34,14 +36,26 @@ const sensitiveFields = [
 ] as const;
 
 describe("Winston logger — structured sensitive-field redaction", () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn>;
+  // Capture the fully formatted output through a dedicated transport. The
+  // Console transport binds console.log when it is constructed, so spying on
+  // console.log from a test never observes it.
+  let lines: string[];
+  let capture: winston.transport;
 
   beforeEach(() => {
-    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    lines = [];
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        lines.push(String(chunk));
+        callback();
+      },
+    });
+    capture = new winston.transports.Stream({ stream });
+    logger.add(capture);
   });
 
   afterEach(() => {
-    consoleSpy.mockRestore();
+    logger.remove(capture);
   });
 
   for (const { operation, fields } of sensitiveFields) {
@@ -53,8 +67,8 @@ describe("Winston logger — structured sensitive-field redaction", () => {
           outcome: "accepted",
         });
 
-        expect(consoleSpy).toHaveBeenCalledOnce();
-        const output = consoleSpy.mock.calls[0][0] as string;
+        expect(lines).toHaveLength(1);
+        const output = lines[0];
         expect(output).not.toContain(sensitiveValue);
         expect(output).toContain("[REDACTED]");
         expect(output).toContain("accepted");
@@ -69,7 +83,7 @@ describe("Winston logger — structured sensitive-field redaction", () => {
       amount: "100.00",
     });
 
-    const output = consoleSpy.mock.calls[0][0] as string;
+    const output = lines[0];
     expect(output).toContain("txHash");
     expect(output).toContain("abc123");
     expect(output).toContain("amount");
@@ -82,7 +96,7 @@ describe("Winston logger — structured sensitive-field redaction", () => {
       requestId: "test-request",
     });
 
-    const output = consoleSpy.mock.calls[0][0] as string;
+    const output = lines[0];
     expect(output).not.toContain("mixed-case-access-token");
     expect(output).toContain("[REDACTED]");
   });

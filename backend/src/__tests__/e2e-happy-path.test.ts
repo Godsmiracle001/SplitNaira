@@ -42,7 +42,17 @@ const serverMock = {
 // and so rpc.Server calls are intercepted by serverMock.
 // This mirrors the approach used in splits.test.ts.
 // ---------------------------------------------------------------------------
-vi.mock("@stellar/stellar-sdk", () => {
+// The expiration store is off-chain (Postgres); these route tests run without
+// a database, so model every project as non-expiring.
+vi.mock("../services/project-expiration.js", () => ({
+  assertProjectNotExpired: vi.fn().mockResolvedValue(undefined),
+  getProjectExpiration: vi.fn().mockResolvedValue(undefined),
+  recordSplitCreated: vi.fn().mockResolvedValue(undefined),
+  configureProjectExpiration: vi.fn().mockResolvedValue({ expiresAt: null }),
+}));
+
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const { StrKey } = await importOriginal<typeof import("@stellar/stellar-sdk")>();
   class ScMapEntry {
     key: unknown;
     val: unknown;
@@ -59,6 +69,8 @@ vi.mock("@stellar/stellar-sdk", () => {
     require("@stellar/stellar-sdk") as typeof import("@stellar/stellar-sdk");
 
   return {
+    // Real StrKey: env and address validation depend on its checksum logic.
+    StrKey,
     Address: {
       fromString: vi.fn((address: string) => ({
         toScVal: () => ({ address })
@@ -112,7 +124,7 @@ vi.mock("../services/stellar.js", () => {
       horizonUrl: "http://horizon.test",
       sorobanRpcUrl: "http://rpc.test",
       networkPassphrase: "Test SDF Network",
-      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       simulatorAccount: "GSIMULATOR"
     }),
     getStellarRpcServer: () => serverMock,
@@ -178,7 +190,7 @@ describe("E2E happy path: create → deposit → distribute → history", () => 
     process.env.HORIZON_URL = "https://horizon.test";
     process.env.SOROBAN_RPC_URL = "https://soroban.test";
     process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network";
-    process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
     process.env.SIMULATOR_ACCOUNT = "GSIMULATOR";
   });
 

@@ -14,7 +14,8 @@ const serverMock = {
   getEvents: getEventsMock,
 };
 
-vi.mock("@stellar/stellar-sdk", () => {
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const { StrKey } = await importOriginal<typeof import("@stellar/stellar-sdk")>();
   class ScMapEntry {
     key: unknown;
     val: unknown;
@@ -25,6 +26,8 @@ vi.mock("@stellar/stellar-sdk", () => {
   }
 
   return {
+    // Real StrKey: env and address validation depend on its checksum logic.
+    StrKey,
     Address: {
       fromString: vi.fn((address: string) => {
         if (!/^[GC][A-Z0-9_]+$/.test(address)) throw new Error("invalid address");
@@ -125,7 +128,7 @@ import {
 } from "../schemas/admin.schemas.js";
 
 const VALID_ADMIN = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-const VALID_TOKEN = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const VALID_TOKEN = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 const VALID_TO = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBWHF";
 
 function createTestApp() {
@@ -147,7 +150,7 @@ describe("Admin Route Response Validation Coverage", () => {
     process.env.HORIZON_URL = "https://horizon.test";
     process.env.SOROBAN_RPC_URL = "https://soroban.test";
     process.env.SOROBAN_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
-    process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    process.env.CONTRACT_ID = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
     process.env.SIMULATOR_ACCOUNT = "GTESTSIMULATOR";
     process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/postgres";
   });

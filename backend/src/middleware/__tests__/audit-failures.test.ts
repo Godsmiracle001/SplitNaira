@@ -36,7 +36,9 @@ const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
 vi.spyOn(logger, "info").mockImplementation(() => logger);
 
 // Mock stellar SDK
-vi.mock("@stellar/stellar-sdk", () => ({
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => ({
+  // Real StrKey: env and address validation depend on its checksum logic.
+  StrKey: (await importOriginal<typeof import("@stellar/stellar-sdk")>()).StrKey,
   Address: {
     fromString: vi.fn((addr: string) => ({
       toScVal: () => ({ address: addr }),
@@ -90,7 +92,7 @@ beforeAll(() => {
   process.env.SOROBAN_NETWORK_PASSPHRASE =
     process.env.SOROBAN_NETWORK_PASSPHRASE ?? "Test SDF Network";
   process.env.CONTRACT_ID =
-    process.env.CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    process.env.CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
   process.env.SIMULATOR_ACCOUNT = process.env.SIMULATOR_ACCOUNT ?? "GTESTSIMULATOR";
   process.env.DATABASE_URL = process.env.DATABASE_URL ?? "https://example.com/postgres";
 });
