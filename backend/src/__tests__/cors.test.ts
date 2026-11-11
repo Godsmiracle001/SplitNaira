@@ -1,4 +1,4 @@
-import { StrKey } from "@stellar/stellar-sdk";
+import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 import express from "express";
@@ -146,6 +146,8 @@ describe("CORS production env validation", () => {
     CONTRACT_ID: StrKey.encodeContract(Buffer.alloc(32, 7)),
     SIMULATOR_ACCOUNT: "test_account",
     PAYMENTS_ADMIN_API_KEY: "test-admin-key",
+    JWT_SECRET: "test-jwt-secret-that-is-at-least-32-characters",
+    AUTH_CHALLENGE_SIGNING_SECRET: Keypair.random().secret(),
   };
 
   beforeEach(() => {

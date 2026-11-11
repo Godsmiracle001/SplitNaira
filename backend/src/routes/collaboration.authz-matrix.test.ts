@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { Keypair } from "@stellar/stellar-sdk";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   collaborationRouter,
@@ -21,6 +21,23 @@ import {
 } from "../services/collaboration/invitation-registry.js";
 import { resetOwnershipTransferForTests } from "../services/splits/ownership-transfer.js";
 import type { ProjectRoleContext } from "../services/collaboration/permissions.js";
+import { sessionHeader } from "../test/auth-helpers.js";
+import { buildUnsignedContractCall } from "../services/splits.service.js";
+
+// The contract call builder needs RPC; stop at the boundary.
+vi.mock("../services/splits.service.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/splits.service.js")>()),
+  buildUnsignedContractCall: vi.fn(async (input: { sourceAddress: string; operation: string }) => ({
+    xdr: "XDR_TRANSFER",
+    metadata: { operation: input.operation, sourceAccount: input.sourceAddress },
+  })),
+}));
+
+// No database here: treat every wallet as having no stored session version.
+vi.mock("../services/session-revocation.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/session-revocation.js")>()),
+  getSessionVersion: vi.fn().mockResolvedValue(null),
+}));
 
 /**
  * Route × persona authorization matrix for the collaboration resource routes.
@@ -32,8 +49,8 @@ import type { ProjectRoleContext } from "../services/collaboration/permissions.j
  * that forgets a guard, a role that quietly gains a grant) fails loudly.
  *
  * Personas:
- *   anonymous  no X-Stellar-Address header                -> 401
- *   malformed  header that is not a Stellar address       -> 400
+ *   anonymous  no session token                            -> 401
+ *   malformed  signed in, X-Stellar-Address unparseable    -> 400
  *   owner      project owner
  *   admin / editor / viewer   listed collaborators by role
  *   unrelated  valid address with no role on the project
@@ -60,10 +77,17 @@ const app = (() => {
   return a;
 })();
 
+// Callers are identified by a session token (issued after a signed wallet
+// challenge). "malformed" is signed in but sends an unparseable
+// X-Stellar-Address assertion.
 function as(persona: Persona, req: request.Test): request.Test {
   if (persona === "anonymous") return req;
-  if (persona === "malformed") return req.set("X-Stellar-Address", "not-a-stellar-address");
-  return req.set("X-Stellar-Address", wallets[persona]);
+  if (persona === "malformed") {
+    return req
+      .set("Authorization", sessionHeader(wallets.unrelated))
+      .set("X-Stellar-Address", "not-a-stellar-address");
+  }
+  return req.set("Authorization", sessionHeader(wallets[persona]));
 }
 
 function inviteBody() {
@@ -243,6 +267,7 @@ describe("authorization boundaries", () => {
     contexts.get(PROJECT)!.collaborators.push({ address: roleless });
     const res = await request(app)
       .post(`/collaboration/projects/${PROJECT}/invitations`)
+      .set("Authorization", sessionHeader(roleless))
       .set("X-Stellar-Address", roleless)
       .send(inviteBody());
     expect(res.status).toBe(403);
@@ -259,6 +284,7 @@ describe("authorization boundaries", () => {
   it("accepts the owner's address with surrounding whitespace as the same identity", async () => {
     const res = await request(app)
       .post(`/collaboration/projects/${PROJECT}/delete`)
+      .set("Authorization", sessionHeader(wallets.owner))
       .set("X-Stellar-Address", `  ${wallets.owner}  `)
       .send(deleteBody);
     expect(res.status).toBe(200);
@@ -267,21 +293,44 @@ describe("authorization boundaries", () => {
   it("rejects a lower-cased owner address instead of matching it", async () => {
     const res = await request(app)
       .post(`/collaboration/projects/${PROJECT}/delete`)
+      .set("Authorization", sessionHeader(wallets.owner))
       .set("X-Stellar-Address", wallets.owner.toLowerCase())
       .send(deleteBody);
     expect(res.status).toBe(400);
   });
 
-  it("revokes the previous owner's transfer right after a transfer", async () => {
+  it("returns an unsigned transfer_project_ownership transaction for the owner to sign", async () => {
+    const next = Keypair.random().publicKey();
+    const res = await as("owner", request(app).post(`/collaboration/projects/${PROJECT}/transfer-ownership`))
+      .send({ newOwner: next })
+      .expect(200);
+    expect(res.body.xdr).toBe("XDR_TRANSFER");
+    expect(res.body.metadata.operation).toBe("transfer_project_ownership");
+    expect(buildUnsignedContractCall).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceAddress: wallets.owner, operation: "transfer_project_ownership" }),
+    );
+  });
+
+  it("revokes the previous owner once the transfer is recorded on-chain", async () => {
     const next = Keypair.random().publicKey();
     await as("owner", request(app).post(`/collaboration/projects/${PROJECT}/transfer-ownership`))
       .send({ newOwner: next })
       .expect(200);
+
+    // The owner signed and submitted; the contract now reports the new owner.
+    contexts.get(PROJECT)!.owner = next;
+
     const again = await as("owner", request(app).post(`/collaboration/projects/${PROJECT}/transfer-ownership`)).send({
       newOwner: Keypair.random().publicKey(),
     });
     expect(again.status).toBe(403);
     expect(again.body.error).toBe("forbidden_not_owner");
+
+    await request(app)
+      .post(`/collaboration/projects/${PROJECT}/transfer-ownership`)
+      .set("Authorization", sessionHeader(next))
+      .send({ newOwner: Keypair.random().publicKey() })
+      .expect(200);
   });
 
   it("a denied cancel leaves the invitation pending", async () => {

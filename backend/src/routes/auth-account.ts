@@ -15,8 +15,28 @@ import { revokeSessionForWallet } from "../services/session-revocation.js";
 import { hashEmailForLog, logAuthEvent } from "../services/auth-events.js";
 import { recordAuthAudit } from "../services/auth-audit.js";
 import { logger } from "../services/logger.js";
+import { issueChallenge } from "../services/wallet-auth.js";
+import { stellarAddressSchema } from "../schemas/user.schemas.js";
 
 export const authAccountRouter = Router();
+
+const challengeQuerySchema = z.object({ account: stellarAddressSchema });
+
+/**
+ * @openapi
+ * GET /auth/challenge
+ * summary: Get a wallet sign-in challenge
+ * description: Returns a SEP-10 challenge transaction for the wallet to sign with signTransaction. Send the signed XDR to POST /users/login or /users/register as signedChallenge. Never submitted to the network.
+ * tags: [Auth]
+ */
+authAccountRouter.get("/challenge", (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { account } = challengeQuerySchema.parse(req.query);
+    return res.status(200).json(issueChallenge(account));
+  } catch (error) {
+    return next(error);
+  }
+});
 
 const emailChangeRequestSchema = z.object({
   newEmail: z.string().trim().email("Invalid email format").max(128),

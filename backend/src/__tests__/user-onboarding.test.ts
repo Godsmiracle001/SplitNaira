@@ -63,6 +63,11 @@ vi.mock("../services/database.js", () => ({
 }));
 
 import { usersRouter } from "../routes/users.js";
+import { TEST_SIGNED_CHALLENGE } from "../test/wallet-auth-stub.js";
+
+vi.mock("../services/wallet-auth.js", async (importOriginal) =>
+  (await import("../test/wallet-auth-stub.js")).stubWalletAuth(await importOriginal()));
+
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -111,7 +116,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
       findOneMock.mockResolvedValue(null);
       const app = createApp();
 
-      const res = await request(app).post("/users/register").send({
+      const res = await request(app).post("/users/register").send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: VALID_WALLET,
         email: "user@example.com",
         alias: "TestUser",
@@ -137,7 +142,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
 
       const res = await request(app)
         .post("/users/register")
-        .send({ walletAddress: VALID_WALLET_2 });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: VALID_WALLET_2 });
 
       expect(res.status).toBe(201);
       expect(res.body.walletAddress).toBe(VALID_WALLET_2);
@@ -147,7 +152,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
       findOneMock.mockResolvedValue(null);
       const app = createApp();
 
-      const res = await request(app).post("/users/register").send({
+      const res = await request(app).post("/users/register").send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: VALID_WALLET,
       });
 
@@ -164,7 +169,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
 
       const res = await request(app)
         .post("/users/register")
-        .send({ walletAddress: VALID_WALLET });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: VALID_WALLET });
 
       expect(res.status).toBe(409);
       expect(res.body.error).toBeDefined();
@@ -176,7 +181,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
 
       await request(app)
         .post("/users/register")
-        .send({ walletAddress: VALID_WALLET });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: VALID_WALLET });
 
       expect(commitMock).not.toHaveBeenCalled();
       expect(rollbackMock).not.toHaveBeenCalled();
@@ -204,7 +209,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
       saveMock.mockRejectedValue(new Error("DB constraint violation"));
       const app = createApp();
 
-      const res = await request(app).post("/users/register").send({
+      const res = await request(app).post("/users/register").send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: VALID_WALLET,
       });
 
@@ -216,7 +221,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
       findOneMock.mockResolvedValue(null);
       const app = createApp();
 
-      const res = await request(app).post("/users/register").send({
+      const res = await request(app).post("/users/register").send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: VALID_WALLET,
       });
 
@@ -234,7 +239,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
 
       const res = await request(app)
         .post("/users/login")
-        .send({ walletAddress: VALID_WALLET });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: VALID_WALLET });
 
       expect(res.status).toBe(200);
       expect(res.body.walletAddress).toBe(VALID_WALLET);
@@ -248,7 +253,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
 
       const loginRes = await request(app)
         .post("/users/login")
-        .send({ walletAddress: VALID_WALLET });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: VALID_WALLET });
 
       expect(loginRes.body).toHaveProperty("id");
       expect(loginRes.body).toHaveProperty("walletAddress");
@@ -266,7 +271,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
 
       const res = await request(app)
         .post("/users/login")
-        .send({ walletAddress: VALID_WALLET });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: VALID_WALLET });
 
       expect(res.status).toBe(401);
     });
@@ -276,7 +281,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
 
       const res = await request(app)
         .post("/users/login")
-        .send({ walletAddress: "INVALID_ADDRESS" });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: "INVALID_ADDRESS" });
 
       expect(res.status).toBe(400);
     });
@@ -322,7 +327,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
 
       // Step 1: Register
       findOneMock.mockResolvedValue(null);
-      const registerRes = await request(app).post("/users/register").send({
+      const registerRes = await request(app).post("/users/register").send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: VALID_WALLET,
         email: "onboard@example.com",
         alias: "OnboardUser",
@@ -333,7 +338,7 @@ describe("User Onboarding — full lifecycle (#515)", () => {
       findOneMock.mockResolvedValue(makeUser({ alias: "OnboardUser" }));
       const loginRes = await request(app)
         .post("/users/login")
-        .send({ walletAddress: VALID_WALLET });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: VALID_WALLET });
       expect(loginRes.status).toBe(200);
       expect(loginRes.body.alias).toBe("OnboardUser");
 

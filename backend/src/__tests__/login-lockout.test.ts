@@ -11,6 +11,11 @@ vi.mock("../services/database.js", () => ({
 }));
 vi.mock("../services/jwt.js", () => ({ signToken }));
 import { usersRouter } from "../routes/users.js";
+import { TEST_SIGNED_CHALLENGE } from "../test/wallet-auth-stub.js";
+
+vi.mock("../services/wallet-auth.js", async (importOriginal) =>
+  (await import("../test/wallet-auth-stub.js")).stubWalletAuth(await importOriginal()));
+
 
 const walletAddress = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const user = {
@@ -32,7 +37,7 @@ const app = express();
 app.use(express.json());
 app.use("/users", usersRouter);
 app.use(errorHandler);
-const login = () => request(app).post("/users/login").send({ walletAddress });
+const login = () => request(app).post("/users/login").send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress });
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -113,7 +118,7 @@ describe("login lockout API", () => {
 
   it("keeps malformed input validation without querying the database", async () => {
     expect(
-      (await request(app).post("/users/login").send({ walletAddress: "invalid" })).status
+      (await request(app).post("/users/login").send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: "invalid" })).status
     ).toBe(400);
     expect(findOne).not.toHaveBeenCalled();
   });

@@ -13,6 +13,7 @@ import { signToken } from "../services/jwt.js";
 import { authJwtMiddleware } from "../middleware/auth-jwt.js";
 import { logAuthEvent } from "../services/auth-events.js";
 import { loginAttemptStore } from "../services/login-attempts.js";
+import { verifySignedChallenge, WalletAuthError } from "../services/wallet-auth.js";
 
 export const usersRouter = Router();
 
@@ -20,12 +21,23 @@ export const usersRouter = Router();
  * @openapi
  * POST /users/register
  * summary: Register a new user
- * description: Creates a user profile linked to a Stellar wallet address.
+ * description: Creates a user profile linked to a Stellar wallet address. Requires a challenge from GET /auth/challenge signed by that wallet, so nobody can claim an address they do not control.
  * tags: [Users]
  */
 usersRouter.post("/register", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { walletAddress, email, alias, role } = userRegistrationSchema.parse(req.body);
+    const { walletAddress, email, alias, role, signedChallenge } = userRegistrationSchema
+      .extend({ signedChallenge: z.string().min(1, "signedChallenge is required") })
+      .parse(req.body);
+
+    try {
+      verifySignedChallenge(signedChallenge, walletAddress);
+    } catch (error) {
+      if (error instanceof WalletAuthError) {
+        throw new AppError(ErrorType.AUTH, ErrorCode.UNAUTHORIZED, "Wallet signature could not be verified.");
+      }
+      throw error;
+    }
 
     // Get repository without opening a transaction
     const dataSource = getDataSource();
@@ -81,18 +93,27 @@ usersRouter.post("/register", async (req: Request, res: Response, next: NextFunc
 /**
  * @openapi
  * POST /users/login
- * summary: Log in by wallet address
- * description: Authenticates a registered user and returns a JWT bearer token.
+ * summary: Log in with a signed wallet challenge
+ * description: Verifies a SEP-10 challenge from GET /auth/challenge, signed by the wallet, and returns a JWT bearer token.
  * tags: [Users]
  */
 usersRouter.post("/login", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const loginSchema = z.object({
-      walletAddress: stellarAddressSchema
+      walletAddress: stellarAddressSchema,
+      signedChallenge: z.string().min(1, "signedChallenge is required"),
     });
 
-    const { walletAddress } = loginSchema.parse(req.body);
+    const { walletAddress, signedChallenge } = loginSchema.parse(req.body);
     const authenticated = await loginAttemptStore.attempt(walletAddress, async () => {
+      // Proof of control comes first: without it the address is just a claim.
+      // A bad signature is an ordinary failed attempt (same generic 401).
+      try {
+        verifySignedChallenge(signedChallenge, walletAddress);
+      } catch (error) {
+        if (error instanceof WalletAuthError) return null;
+        throw error;
+      }
       const user = await getDataSource().getRepository(User).findOne({
         where: { walletAddress, deletedAt: IsNull() }
       });

@@ -13,7 +13,15 @@ import { docsRouter } from "./routes/docs.js";
 import { usersRouter } from "./routes/users.js";
 import { authEmailRouter } from "./routes/auth-email.js";
 import { authAccountRouter } from "./routes/auth-account.js";
-import { collaborationRouter } from "./routes/collaboration.js";
+import {
+  collaborationRouter,
+  setProjectDeletionSnapshotResolver,
+  setProjectRoleContextResolver,
+} from "./routes/collaboration.js";
+import {
+  resolveDeletionSnapshotFromChain,
+  resolveRoleContextFromChain,
+} from "./services/collaboration/chain-context.js";
 import { transactionsRouter } from "./routes/transactions.js";
 import { eventsRouter, closeAllSseConnections } from "./routes/events.js";
 import { ledgerRouter } from "./routes/ledger.js";
@@ -162,6 +170,10 @@ app.use("/ops", opsRouter);
 app.use("/docs", docsRouter);
 app.use("/auth", authEmailRouter);
 app.use("/auth", authAccountRouter);
+// Project owner and collaborators come from the contract (never registered
+// before, so every collaboration route answered project_owner_unknown).
+setProjectRoleContextResolver(resolveRoleContextFromChain);
+setProjectDeletionSnapshotResolver(resolveDeletionSnapshotFromChain);
 app.use("/collaboration", collaborationRouter);
 app.use("/users", usersRouter);
 app.use("/transactions", transactionsRouter);

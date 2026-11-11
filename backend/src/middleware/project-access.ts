@@ -6,9 +6,9 @@
  *   1. The project owner, or
  *   2. A listed collaborator on the project
  *
- * The requester's address is read from the `X-Stellar-Address` request header.
- * Callers MUST sign a recent challenge nonce to prove ownership before sending
- * this header (enforced by the wallet-level Freighter signature flow).
+ * The requester is the wallet proven by the session JWT, which is only issued
+ * after the wallet signs a challenge (GET /auth/challenge, POST /users/login).
+ * An `X-Stellar-Address` header, if sent, must match that wallet.
  *
  * Routes that serve non-sensitive aggregate data (e.g. allowlist, public
  * project list) should NOT apply this middleware.
@@ -24,6 +24,8 @@ import {
   type ProjectAccessTarget,
 } from "../services/auth.js";
 import { logger } from "../services/logger.js";
+import { authJwtMiddleware } from "./auth-jwt.js";
+import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
 
 export { STELLAR_ADDRESS_HEADER, type ProjectAccessTarget };
 
@@ -38,17 +40,44 @@ export function requireStellarAddress(
   res: Response,
   next: NextFunction,
 ): void {
-  const result = parseStellarAddressHeader(
-    req.headers[STELLAR_ADDRESS_HEADER] as string | string[] | undefined,
-  );
+  // The requester is the wallet proven by the session token (issued only
+  // after a signed challenge, see services/wallet-auth.ts). The header used
+  // to be the only source, and anyone could set it to any address.
+  void authJwtMiddleware(req, res, (error?: unknown) => {
+    if (error) {
+      next(error);
+      return;
+    }
+    const walletAddress = req.user?.walletAddress;
+    if (!walletAddress) {
+      next(new AppError(ErrorType.AUTH, ErrorCode.UNAUTHORIZED, "Sign in with your wallet first."));
+      return;
+    }
 
-  if (!result.ok) {
-    next(result.error);
-    return;
-  }
+    // Still accepted for compatibility, but only as an assertion that must
+    // match the signed-in wallet.
+    const rawHeader = req.headers[STELLAR_ADDRESS_HEADER] as string | string[] | undefined;
+    if (rawHeader !== undefined) {
+      const result = parseStellarAddressHeader(rawHeader);
+      if (!result.ok) {
+        next(result.error);
+        return;
+      }
+      if (result.address !== walletAddress) {
+        next(
+          new AppError(
+            ErrorType.AUTH,
+            ErrorCode.UNAUTHORIZED,
+            `${STELLAR_ADDRESS_HEADER} does not match the signed-in wallet.`,
+          ),
+        );
+        return;
+      }
+    }
 
-  res.locals.requesterAddress = result.address;
-  next();
+    res.locals.requesterAddress = walletAddress;
+    next();
+  });
 }
 
 /**

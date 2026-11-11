@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { Keypair } from "@stellar/stellar-sdk";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   collaborationRouter,
@@ -19,6 +19,22 @@ import {
   resetInvitationRegistryForTests,
 } from "../services/collaboration/invitation-registry.js";
 import { resetOwnershipTransferForTests } from "../services/splits/ownership-transfer.js";
+import { sessionHeader } from "../test/auth-helpers.js";
+
+// The contract call builder needs RPC; stop at the boundary.
+vi.mock("../services/splits.service.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/splits.service.js")>()),
+  buildUnsignedContractCall: vi.fn(async (input: { sourceAddress: string; operation: string }) => ({
+    xdr: "XDR_TRANSFER",
+    metadata: { operation: input.operation, sourceAccount: input.sourceAddress },
+  })),
+}));
+
+// No database here: treat every wallet as having no stored session version.
+vi.mock("../services/session-revocation.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/session-revocation.js")>()),
+  getSessionVersion: vi.fn().mockResolvedValue(null),
+}));
 
 const createApp = () => {
   const app = express();
@@ -60,7 +76,7 @@ describe("collaboration workflow routes", () => {
   it("requires the authenticated current owner and ignores client-supplied owner claims", async () => {
     const response = await request(createApp())
       .post("/collaboration/projects/project_1/transfer-ownership")
-      .set("X-Stellar-Address", stranger)
+      .set("Authorization", sessionHeader(stranger))
       .send({ actor: owner, currentOwner: stranger, newOwner })
       .expect(403);
 
@@ -70,7 +86,7 @@ describe("collaboration workflow routes", () => {
   it("transfers ownership for the authenticated current owner", async () => {
     const response = await request(createApp())
       .post("/collaboration/projects/project_1/transfer-ownership")
-      .set("X-Stellar-Address", owner)
+      .set("Authorization", sessionHeader(owner))
       .send({ actor: stranger, currentOwner: stranger, newOwner })
       .expect(200);
 
@@ -79,7 +95,8 @@ describe("collaboration workflow routes", () => {
       toOwner: newOwner,
       authorizedBy: owner,
     });
-    expect(response.body.isNewOwner).toBe(true);
+    // The owner still has to sign this; ownership changes on-chain.
+    expect(response.body.metadata.operation).toBe("transfer_project_ownership");
   });
 
   it("records the authenticated inviter and blocks unauthenticated invitations", async () => {
@@ -90,7 +107,7 @@ describe("collaboration workflow routes", () => {
 
     const response = await request(createApp())
       .post("/collaboration/projects/project_1/invitations")
-      .set("X-Stellar-Address", admin)
+      .set("Authorization", sessionHeader(admin))
       .send({
         email: "person@example.com",
         tokenJti: "invite-authenticated-admin",
@@ -122,7 +139,7 @@ describe("collaboration workflow routes", () => {
   it("uses server financial history and authenticated identity for deletion", async () => {
     const response = await request(createApp())
       .post("/collaboration/projects/project_1/delete")
-      .set("X-Stellar-Address", owner)
+      .set("Authorization", sessionHeader(owner))
       .send({
         actor: stranger,
         confirmed: true,

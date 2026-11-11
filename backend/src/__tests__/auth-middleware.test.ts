@@ -1,3 +1,4 @@
+import { Keypair } from "@stellar/stellar-sdk";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 import {
@@ -6,6 +7,13 @@ import {
   STELLAR_ADDRESS_HEADER,
 } from "../middleware/project-access.js";
 import { AppError, ErrorCode, ErrorType } from "../lib/errors.js";
+import { sessionHeader } from "../test/auth-helpers.js";
+
+// No database here: treat every wallet as having no stored session version.
+vi.mock("../services/session-revocation.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/session-revocation.js")>()),
+  getSessionVersion: vi.fn().mockResolvedValue(null),
+}));
 
 function createMockRequest(overrides: Partial<Request> = {}): Request {
   return {
@@ -23,101 +31,111 @@ function createMockResponse(overrides: Partial<Response> = {}): Response {
   } as unknown as Response;
 }
 
-function createMockNext(): ReturnType<NextFunction> & { calls: unknown[] } {
-  const next: ReturnType<NextFunction> & { calls: unknown[] } = vi.fn() as never;
-  return next;
+type MockNext = NextFunction & { mock: { calls: unknown[][] } };
+
+function createMockNext(): MockNext {
+  return vi.fn() as unknown as MockNext;
 }
 
 const VALID_STELLAR_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-const ANOTHER_VALID_ADDRESS = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+const ANOTHER_VALID_ADDRESS = Keypair.random().publicKey();
 const INVALID_ADDRESS = "not-a-stellar-address";
 
 describe("requireStellarAddress", () => {
+  // The requester is the wallet in the session token (issued only after a
+  // signed challenge). The header can only assert the same wallet.
   let req: Request;
-  let res: Response;
-  let next: ReturnType<NextFunction> & { calls: unknown[] };
+  let res: Response & { statusCode?: number; body?: unknown };
+  let next: MockNext;
 
   beforeEach(() => {
     req = createMockRequest();
-    res = createMockResponse();
+    res = createMockResponse({
+      status(code: number) {
+        res.statusCode = code;
+        return res;
+      },
+      json(body: unknown) {
+        res.body = body;
+        return res;
+      },
+    } as Partial<Response>) as typeof res;
     next = createMockNext();
   });
 
-  it("should pass when valid stellar address header is present", () => {
+  const run = async () => {
+    requireStellarAddress(req, res, next);
+    // authJwtMiddleware awaits the session-version lookup before calling next.
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  it("uses the wallet from a valid session token", async () => {
+    req.headers.authorization = sessionHeader(VALID_STELLAR_ADDRESS);
+
+    await run();
+
+    expect(res.locals.requesterAddress).toBe(VALID_STELLAR_ADDRESS);
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("rejects a request with only the header and no session (the old spoofable path)", async () => {
     req.headers[STELLAR_ADDRESS_HEADER] = VALID_STELLAR_ADDRESS;
 
-    requireStellarAddress(req, res, next);
+    await run();
 
-    expect(res.locals.requesterAddress).toBe(VALID_STELLAR_ADDRESS);
-    expect(next).toHaveBeenCalledWith();
+    expect(res.statusCode).toBe(401);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.locals.requesterAddress).toBeUndefined();
   });
 
-  it("should trim whitespace from the address header", () => {
+  it("rejects a forged or invalid token", async () => {
+    req.headers.authorization = "Bearer not.a.jwt";
+
+    await run();
+
+    expect(res.statusCode).toBe(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("accepts a header that matches the session wallet (trimmed)", async () => {
+    req.headers.authorization = sessionHeader(VALID_STELLAR_ADDRESS);
     req.headers[STELLAR_ADDRESS_HEADER] = `  ${VALID_STELLAR_ADDRESS}  `;
 
-    requireStellarAddress(req, res, next);
+    await run();
 
     expect(res.locals.requesterAddress).toBe(VALID_STELLAR_ADDRESS);
     expect(next).toHaveBeenCalledWith();
   });
 
-  it("should return 401 when header is missing", () => {
-    requireStellarAddress(req, res, next);
+  it("rejects a header naming a different wallet than the session", async () => {
+    req.headers.authorization = sessionHeader(VALID_STELLAR_ADDRESS);
+    req.headers[STELLAR_ADDRESS_HEADER] = ANOTHER_VALID_ADDRESS;
 
-    expect(next).toHaveBeenCalledTimes(1);
-    const error = next.mock.calls[0][0] as AppError;
-    expect(error).toBeInstanceOf(AppError);
-    expect(error.type).toBe(ErrorType.AUTH);
-    expect(error.code).toBe(ErrorCode.UNAUTHORIZED);
-    expect(error.message).toContain("Missing required header");
-  });
-
-  it("should return 401 when header is empty string", () => {
-    req.headers[STELLAR_ADDRESS_HEADER] = "";
-
-    requireStellarAddress(req, res, next);
+    await run();
 
     const error = next.mock.calls[0][0] as AppError;
     expect(error.type).toBe(ErrorType.AUTH);
     expect(error.code).toBe(ErrorCode.UNAUTHORIZED);
+    expect(res.locals.requesterAddress).toBeUndefined();
   });
 
-  it("should return 401 when header is non-string array", () => {
-    req.headers[STELLAR_ADDRESS_HEADER] = [VALID_STELLAR_ADDRESS] as unknown as string;
-
-    requireStellarAddress(req, res, next);
-
-    const error = next.mock.calls[0][0] as AppError;
-    expect(error.type).toBe(ErrorType.AUTH);
-    expect(error.code).toBe(ErrorCode.UNAUTHORIZED);
-  });
-
-  it("should return validation error when address format is invalid", () => {
+  it("returns a validation error for a malformed header", async () => {
+    req.headers.authorization = sessionHeader(VALID_STELLAR_ADDRESS);
     req.headers[STELLAR_ADDRESS_HEADER] = INVALID_ADDRESS;
 
-    requireStellarAddress(req, res, next);
+    await run();
 
     const error = next.mock.calls[0][0] as AppError;
     expect(error.type).toBe(ErrorType.VALIDATION);
     expect(error.code).toBe(ErrorCode.VALIDATION_ERROR);
     expect(error.message).toContain("Invalid Stellar address");
   });
-
-  it("should return validation error when address starts with wrong prefix", () => {
-    req.headers[STELLAR_ADDRESS_HEADER] = "XAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-
-    requireStellarAddress(req, res, next);
-
-    const error = next.mock.calls[0][0] as AppError;
-    expect(error.type).toBe(ErrorType.VALIDATION);
-    expect(error.code).toBe(ErrorCode.VALIDATION_ERROR);
-  });
 });
 
 describe("requireProjectAccess", () => {
   let req: Request;
   let res: Response;
-  let next: ReturnType<NextFunction> & { calls: unknown[] };
+  let next: MockNext;
 
   beforeEach(() => {
     req = createMockRequest();

@@ -22,6 +22,11 @@ import { errorHandler, notFoundHandler } from "../middleware/error.js";
 import { requestIdMiddleware } from "../middleware/request-id.js";
 import { signToken } from "../services/jwt.js";
 import { verificationResendCooldown } from "../services/verification-resend-cooldown.js";
+import { TEST_SIGNED_CHALLENGE } from "../test/wallet-auth-stub.js";
+
+vi.mock("../services/wallet-auth.js", async (importOriginal) =>
+  (await import("../test/wallet-auth-stub.js")).stubWalletAuth(await importOriginal()));
+
 
 const WALLET_KNOWN = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 // Must pass the Stellar address checksum (POST /users/login validates it).
@@ -226,7 +231,7 @@ describe("email enumeration (#1449)", () => {
 
   describe("sign-in", () => {
     const login = (app: express.Express, body: Record<string, unknown>) =>
-      request(app).post("/users/login").send(body);
+      request(app).post("/users/login").send({ signedChallenge: TEST_SIGNED_CHALLENGE, ...body });
 
     it("signs in by wallet and ignores any email in the body", async () => {
       const app = createApp();

@@ -1,4 +1,4 @@
-import { StrKey } from "@stellar/stellar-sdk";
+import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   validateEnv,
@@ -24,7 +24,13 @@ const VALID_ENV: Record<string, string> = {
   SIMULATOR_ACCOUNT: "GABC123SIMULATORACCOUNT456"
 };
 
-const REQUIRED_KEYS = Object.keys(VALID_ENV);
+/** Secrets production refuses to start without (session JWTs, sign-in challenges). */
+const PRODUCTION_SECRETS: Record<string, string> = {
+  JWT_SECRET: "test-jwt-secret-that-is-at-least-32-characters",
+  AUTH_CHALLENGE_SIGNING_SECRET: Keypair.random().secret(),
+};
+
+const REQUIRED_KEYS = [...Object.keys(VALID_ENV), ...Object.keys(PRODUCTION_SECRETS)];
 let savedEnv: Record<string, string | undefined>;
 
 // ─── Setup / teardown ─────────────────────────────────────────────────────────
@@ -156,6 +162,7 @@ describe("validateEnv()", () => {
     Object.assign(process.env, {
       ...VALID_ENV,
       NODE_ENV: "production",
+      ...PRODUCTION_SECRETS,
       CORS_ORIGIN: "https://app.splitnaira.com"
     });
     delete process.env.PAYMENTS_ADMIN_API_KEY;
@@ -167,6 +174,7 @@ describe("validateEnv()", () => {
     Object.assign(process.env, {
       ...VALID_ENV,
       NODE_ENV: "production",
+      ...PRODUCTION_SECRETS,
       CORS_ORIGIN: "https://app.splitnaira.com",
       PAYMENTS_ADMIN_API_KEY: "super-secret-admin-key",
       PAYMENTS_ADMIN_WRITE_ENABLED: "false"
@@ -177,10 +185,46 @@ describe("validateEnv()", () => {
     expect(env.PAYMENTS_ADMIN_WRITE_ENABLED).toBe("false");
   });
 
+  it.each([
+    ["missing", undefined],
+    ["too short", "short-secret"],
+    ["the public development default", "dev-secret-change-in-production"],
+  ])("rejects a %s JWT_SECRET in production", (_label, jwtSecret) => {
+    const env: Record<string, string> = {
+      ...VALID_ENV,
+      NODE_ENV: "production",
+      ...PRODUCTION_SECRETS,
+      CORS_ORIGIN: "https://app.splitnaira.com",
+      PAYMENTS_ADMIN_API_KEY: "super-secret-admin-key",
+    };
+    if (jwtSecret === undefined) delete env.JWT_SECRET;
+    else env.JWT_SECRET = jwtSecret;
+    delete process.env.JWT_SECRET;
+    Object.assign(process.env, env);
+
+    expect(() => validateEnv()).toThrowError(/JWT_SECRET is required in production/);
+  });
+
+  it("requires a valid challenge signing seed in production", () => {
+    const base = {
+      ...VALID_ENV,
+      NODE_ENV: "production",
+      ...PRODUCTION_SECRETS,
+      CORS_ORIGIN: "https://app.splitnaira.com",
+      PAYMENTS_ADMIN_API_KEY: "super-secret-admin-key",
+    };
+    Object.assign(process.env, { ...base, AUTH_CHALLENGE_SIGNING_SECRET: "" });
+    expect(() => validateEnv()).toThrowError(/AUTH_CHALLENGE_SIGNING_SECRET is required/);
+
+    Object.assign(process.env, { ...base, AUTH_CHALLENGE_SIGNING_SECRET: "not-a-seed" });
+    expect(() => validateEnv()).toThrowError(/must be a Stellar secret seed/);
+  });
+
   it("rejects CORS_ORIGIN with wildcard in production", () => {
     Object.assign(process.env, {
       ...VALID_ENV,
       NODE_ENV: "production",
+      ...PRODUCTION_SECRETS,
       CORS_ORIGIN: "*"
     });
 
@@ -191,6 +235,7 @@ describe("validateEnv()", () => {
     Object.assign(process.env, {
       ...VALID_ENV,
       NODE_ENV: "production",
+      ...PRODUCTION_SECRETS,
       CORS_ORIGIN: "https://app.splitnaira.com,*"
     });
 

@@ -11,6 +11,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { markStartupComplete } from "../routes/health.js";
+import { TEST_SIGNED_CHALLENGE } from "../test/wallet-auth-stub.js";
+
+vi.mock("../services/wallet-auth.js", async (importOriginal) =>
+  (await import("../test/wallet-auth-stub.js")).stubWalletAuth(await importOriginal()));
+
 
 // ── Environment stubs ────────────────────────────────────────────────────────
 process.env.DATABASE_URL = "postgres://example.com/test";
@@ -133,7 +138,7 @@ describe("Issue #1260: DB uniqueness constraint → 409 responses", () => {
 
     const res = await request(app)
       .post("/users/register")
-      .send({
+      .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
         email: "duplicate@example.com",
         alias: "Test User",
@@ -153,7 +158,7 @@ describe("Issue #1260: DB uniqueness constraint → 409 responses", () => {
 
     const res = await request(app)
       .post("/users/register")
-      .send({
+      .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
         alias: "Concurrent User",
       });
@@ -168,7 +173,7 @@ describe("Issue #1260: DB uniqueness constraint → 409 responses", () => {
 
     const res = await request(app)
       .post("/users/register")
-      .send({
+      .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
       });
 
@@ -187,7 +192,7 @@ describe("Issue #1260: DB uniqueness constraint → 409 responses", () => {
 
     const res = await request(app)
       .post("/users/register")
-      .send({
+      .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
       });
 
@@ -203,7 +208,7 @@ describe("Issue #1260: DB uniqueness constraint → 409 responses", () => {
 
     const res = await request(app)
       .post("/users/register")
-      .send({
+      .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
         walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
         email: "dup@example.com",
       });

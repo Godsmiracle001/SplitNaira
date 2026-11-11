@@ -57,6 +57,11 @@ vi.mock("../services/database.js", () => ({
 }));
 
 import { usersRouter } from "../routes/users.js";
+import { TEST_SIGNED_CHALLENGE } from "../test/wallet-auth-stub.js";
+
+vi.mock("../services/wallet-auth.js", async (importOriginal) =>
+  (await import("../test/wallet-auth-stub.js")).stubWalletAuth(await importOriginal()));
+
 
 const NOW = new Date("2026-04-28T12:00:00.000Z");
 
@@ -92,7 +97,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/register")
-        .send({
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
           walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
           email: "test@example.com",
           alias: "TestUser",
@@ -114,7 +119,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/register")
-        .send({
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
           walletAddress: "GBIRMAYQUTHQC762ZTJTNXWDSHSDGN64ZXPXJ6XRLWJCAF6TS4Z7J7IO"
         });
 
@@ -128,7 +133,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/register")
-        .send({
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
           walletAddress: "GBIRMAYQUTHQC762ZTJTNXWDSHSDGN64ZXPXJ6XRLWJCAF6TS4Z7J7IO"
         });
 
@@ -143,7 +148,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/register")
-        .send({ walletAddress: "GAFY5DYD3EEUWPHL2JHAWFOLKEI2IAQRAVW4Y3L6DLJQOXG2TAJMU7GC" });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: "GAFY5DYD3EEUWPHL2JHAWFOLKEI2IAQRAVW4Y3L6DLJQOXG2TAJMU7GC" });
 
       expect(response.status).toBe(409);
       expect(response.body.error).toBeDefined();
@@ -154,7 +159,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/register")
-        .send({
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
           walletAddress: "INVALID_ADDRESS"
         });
 
@@ -167,7 +172,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/register")
-        .send({
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
           walletAddress: "GAT5GUL7A3BQSOHTPV32ARPLCJFDTICSV3IAT4EAQ5UWTSNE5XNX4Q33",
           email: "invalid-email"
         });
@@ -236,7 +241,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/login")
-        .send({ walletAddress });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress });
 
       expect(response.status).toBe(200);
       expect(response.body.walletAddress).toBe(walletAddress);
@@ -249,7 +254,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/login")
-        .send({ walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF" });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF" });
 
       expect(response.status).toBe(401);
     });
@@ -259,7 +264,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/login")
-        .send({ walletAddress: "INVALID_ADDRESS" });
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress: "INVALID_ADDRESS" });
 
       expect(response.status).toBe(400);
     });
@@ -274,7 +279,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/register")
-        .send({
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
           walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
           email: "test@example.com",
           alias: "TestUser"
@@ -290,7 +295,7 @@ describe("User Registration API", () => {
 
       const response = await request(app)
         .post("/users/register")
-        .send({
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE,
           walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
           email: "test@example.com",
           alias: "TestUser"
@@ -505,7 +510,7 @@ describe("Soft delete (#1333)", () => {
       const app = createApp();
       await request(app)
         .post("/users/login")
-        .send({ walletAddress })
+        .send({ signedChallenge: TEST_SIGNED_CHALLENGE, walletAddress })
         .expect(401);
     });
 

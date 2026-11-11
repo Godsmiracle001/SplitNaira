@@ -58,6 +58,19 @@ const backendEnvSchema = z.object({
   .default(process.env.NODE_ENV === "production" ? "true" : "false"),
 
   PAYMENTS_ADMIN_API_KEY: z.string().optional(),
+
+  /** Signs session JWTs. Required in production (see superRefine below). */
+  JWT_SECRET: z.string().optional(),
+  /** Stellar secret seed (S...) that signs SEP-10 wallet sign-in challenges. */
+  AUTH_CHALLENGE_SIGNING_SECRET: z
+    .string()
+    .optional()
+    .refine(
+      (val) => val === undefined || StrKey.isValidEd25519SecretSeed(val.trim()),
+      "AUTH_CHALLENGE_SIGNING_SECRET must be a Stellar secret seed (S...)",
+    ),
+  /** Home domain embedded in sign-in challenges; defaults to splitnaira.app. */
+  AUTH_HOME_DOMAIN: z.string().optional(),
   PAYMENTS_ADMIN_WRITE_ENABLED: z
     .enum(["true", "false"])
     .optional()
@@ -174,6 +187,26 @@ const backendEnvSchema = z.object({
           "PAYMENTS_ADMIN_API_KEY is required in production to protect /splits/admin wallet and payment operations.",
       });
     }
+
+    // Without this, sessions are signed with the public development default
+    // in services/jwt.ts and anyone can forge a token for any wallet.
+    const jwtSecret = data.JWT_SECRET?.trim() ?? "";
+    if (jwtSecret.length < 32 || jwtSecret === "dev-secret-change-in-production") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["JWT_SECRET"],
+        message: "JWT_SECRET is required in production and must be a random value of at least 32 characters.",
+      });
+    }
+
+    if (!data.AUTH_CHALLENGE_SIGNING_SECRET?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["AUTH_CHALLENGE_SIGNING_SECRET"],
+        message:
+          "AUTH_CHALLENGE_SIGNING_SECRET is required in production so wallet sign-in works across restarts and instances.",
+      });
+    }
   }
 });
 
@@ -249,6 +282,9 @@ export function printEnvDiagnostics(): void {
     { key: "SENTRY_DSN", required: false },
     { key: "SENTRY_ENVIRONMENT", required: false },
     { key: "PAYMENTS_ADMIN_API_KEY", required: false },
+    { key: "JWT_SECRET", required: false },
+    { key: "AUTH_CHALLENGE_SIGNING_SECRET", required: false },
+    { key: "AUTH_HOME_DOMAIN", required: false },
     { key: "PAYMENTS_ADMIN_WRITE_ENABLED", required: false },
     { key: "STRICT_RESPONSE_VALIDATION", required: false },
     { key: "DATABASE_URL", required: true },

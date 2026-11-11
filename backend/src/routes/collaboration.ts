@@ -23,7 +23,6 @@ import {
 import {
   setProjectOwner,
   transferOwnership,
-  isCurrentOwner,
   listOwnershipAudit,
 } from "../services/splits/ownership-transfer.js";
 import { requireStellarAddress } from "../middleware/project-access.js";
@@ -32,6 +31,8 @@ import {
   type ProjectRoleContextResolver,
 } from "../middleware/project-permission.js";
 import { stellarAddressSchema } from "../schemas/splits.js";
+import { Address, nativeToScVal } from "@stellar/stellar-sdk";
+import { buildUnsignedContractCall } from "../services/splits.service.js";
 
 export const collaborationRouter = Router();
 
@@ -222,15 +223,29 @@ collaborationRouter.post(
       if (!projectContext) {
         return res.status(404).json({ error: "project_owner_unknown" });
       }
+      // The on-chain owner is authoritative; validates the actor and new owner.
       setProjectOwner(projectId, projectContext.owner);
       const record = transferOwnership({
         projectId,
         actor: requesterAddress,
         newOwner: body.newOwner,
       });
+      // Ownership only changes when the current owner signs and submits this
+      // transaction; until then the contract (and every check here) still
+      // sees the old owner.
+      const unsignedTx = await buildUnsignedContractCall({
+        sourceAddress: requesterAddress,
+        sourceRoleLabel: "owner",
+        operation: "transfer_project_ownership",
+        args: [
+          nativeToScVal(projectId, { type: "symbol" }),
+          Address.fromString(requesterAddress).toScVal(),
+          Address.fromString(body.newOwner).toScVal(),
+        ],
+      });
       return res.status(200).json({
+        ...unsignedTx,
         transfer: record,
-        isNewOwner: isCurrentOwner(projectId, body.newOwner),
         audit: listOwnershipAudit(projectId),
       });
     } catch (error) {
