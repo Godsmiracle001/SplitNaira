@@ -26,8 +26,8 @@ SplitNaira is in active development. This repo currently contains:
 ### Option 1: Docker Compose (Recommended for demos and pre-deployment checks)
 
 ```bash
-# Copy the environment template, then set CONTRACT_ID and SIMULATOR_ACCOUNT.
-# The backend will not start without them, and the frontend waits for it.
+# Copy the environment template. It already points at the shared testnet
+# contract; the backend will not start without CONTRACT_ID and SIMULATOR_ACCOUNT.
 cp .env.compose.example .env.local
 
 # Start the entire stack (Postgres + Backend + Frontend)
@@ -40,9 +40,9 @@ docker compose --env-file .env.local up --build
 # - API Docs:    http://localhost:3001/api/docs
 ```
 
-> The repository does not record a live contract deployment
-> (`contracts/deployments.json` is a placeholder). Deploy the contract to
-> testnet first — see [Contract Setup](./docs/SOROBAN_SETUP.md) — and use its ID.
+> The template uses the testnet deployment recorded in
+> `contracts/deployments.json`. To use your own, deploy the contract (see
+> [Contract Setup](./docs/SOROBAN_SETUP.md)) and replace the IDs.
 
 ### Option 2: Local Development
 
@@ -329,8 +329,15 @@ npm run analyze:bundle -w frontend
 
 ## Known limitations
 
-- **No recorded deployment.** `contracts/deployments.json` is a placeholder;
-  deploy the contract and set `CONTRACT_ID` yourself.
+- **Testnet only.** The contract is deployed to testnet at
+  `CDSZJOB3ACD7GJDILCFTHSP3WRTJUC2GWZLJVOEUNTIVM2N6O25LEYWJ` (recorded in
+  `contracts/deployments.json`). There is no mainnet deployment.
+- **Admin must be claimed.** That deployment was made without an admin. The
+  first account to call `set_admin` becomes admin, and only the admin can
+  manage the token allowlist and pause distributions. Claim it with
+  `stellar contract invoke --id <CONTRACT_ID> --source <your-key> --network testnet -- set_admin --admin <your-G-address>`.
+- **No upgrade path.** The contract has no `upgrade` function, so a new
+  version means a new deployment and a new `CONTRACT_ID`.
 - **Token presets.** The token picker only lists the native XLM asset contract
   for each network (derived, verifiable IDs). Add issued assets such as USDC
   only after verifying their contract ID.
