@@ -22,23 +22,23 @@ production/mainnet release.
 
 ## Scorecard
 
-| Area | Check | Pass / Risk | Owner | Evidence | Sign-off |
-|------|-------|:---:|-------|----------|:---:|
-| Contract | Contract test suite, WASM build, and audit checks green ([Release readiness checklist](../release-readiness-checklist.md)) | | Contracts team | | |
-| Contract | Authorization boundaries covered by tests (owner/admin/collaborator-gated ops) — `cargo test` in `contracts/` | | Contracts team | | |
-| Contract | Testnet smoke test passes ([`smoke-testnet.yml`](../../.github/workflows/smoke-testnet.yml) / `scripts/smoke-testnet.mjs`) | | Contracts team | | |
-| Backend | `ci.yml` backend job green (lint, build, `test:compat`, `test`) on the release commit | | Backend team | | |
-| Backend | `/health/ready` and `/health/live` return healthy against the target environment | | Backend team | | |
-| Backend | Graceful shutdown verified — readiness flips before shutdown completes, DB/SSE resources close within `SHUTDOWN_FORCE_TIMEOUT_MS` ([`RELIABILITY.md`](../../backend/RELIABILITY.md#graceful-shutdown-issue-868)) | | Backend team | | |
-| Backend | Post-deploy smoke check passes (`scripts/deploy-smoke-check.mjs`) | | Backend team | | |
-| Frontend | `frontend-ci.yml` / `frontend-quality.yml` green on the release commit | | Frontend team | | |
-| Frontend | i18n key parity check passes; no untranslated/missing keys | | Frontend team | | |
-| Infra | `mainnet-readiness-gate` / `GET /ops/mainnet-readiness` all four checks `pass` ([Mainnet launch runbook](./mainnet-launch.md#validation)) | | DevOps/Infra team | | |
-| Infra | Required deploy secrets present (`MAINNET_CONTRACT_ID`, `RENDER_BACKEND_DEPLOY_HOOK_URL`, etc.) | | DevOps/Infra team | | |
-| Security | `codeql-analysis.yml` and `dependency-audit.yml` show no unresolved high/critical findings | | Security reviewer | | |
-| Security | `security-audit` job (npm audit, backend + frontend) clean or exceptions documented | | Security reviewer | | |
-| Support | Rollback readiness confirmed (see below) | | Support/Ops team | | |
-| Support | Monitoring & alerting confirmed live for the release (see below) | | Support/Ops team | | |
+| Area     | Check                                                                                                                                                                                                            | Pass / Risk | Owner             | Evidence | Sign-off |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------: | ----------------- | -------- | :------: |
+| Contract | Contract test suite, WASM build, and audit checks green ([Release readiness checklist](../release-readiness-checklist.md))                                                                                       |             | Contracts team    |          |          |
+| Contract | Authorization boundaries covered by tests (owner/admin/collaborator-gated ops) — `cargo test` in `contracts/`                                                                                                    |             | Contracts team    |          |          |
+| Contract | Testnet smoke test passes ([`smoke-testnet.yml`](../../.github/workflows/smoke-testnet.yml) / `scripts/smoke-testnet.mjs`)                                                                                       |             | Contracts team    |          |          |
+| Backend  | `ci.yml` backend job green (lint, build, `test:compat`, `test`) on the release commit                                                                                                                            |             | Backend team      |          |          |
+| Backend  | `/health/ready` and `/health/live` return healthy against the target environment                                                                                                                                 |             | Backend team      |          |          |
+| Backend  | Graceful shutdown verified — readiness flips before shutdown completes, DB/SSE resources close within `SHUTDOWN_FORCE_TIMEOUT_MS` ([`RELIABILITY.md`](../../backend/RELIABILITY.md#graceful-shutdown-issue-868)) |             | Backend team      |          |          |
+| Backend  | Post-deploy smoke check passes (`scripts/deploy-smoke-check.mjs`)                                                                                                                                                |             | Backend team      |          |          |
+| Frontend | `frontend-ci.yml` / `frontend-quality.yml` green on the release commit                                                                                                                                           |             | Frontend team     |          |          |
+| Frontend | i18n key parity check passes; no untranslated/missing keys                                                                                                                                                       |             | Frontend team     |          |          |
+| Infra    | `mainnet-readiness-gate` / `GET /ops/mainnet-readiness` all four checks `pass` ([Mainnet launch runbook](./mainnet-launch.md#validation))                                                                        |             | DevOps/Infra team |          |          |
+| Infra    | Required deploy secrets present (`MAINNET_CONTRACT_ID`, `RENDER_BACKEND_DEPLOY_HOOK_URL`, etc.)                                                                                                                  |             | DevOps/Infra team |          |          |
+| Security | `codeql-analysis.yml` and `dependency-audit.yml` show no unresolved high/critical findings                                                                                                                       |             | Security reviewer |          |          |
+| Security | `security-audit` job (npm audit, backend + frontend) clean or exceptions documented                                                                                                                              |             | Security reviewer |          |          |
+| Support  | Rollback readiness confirmed (see below)                                                                                                                                                                         |             | Support/Ops team  |          |          |
+| Support  | Monitoring & alerting confirmed live for the release (see below)                                                                                                                                                 |             | Support/Ops team  |          |          |
 
 ## Required CI runs
 
@@ -61,7 +61,7 @@ stale or unrelated run:
 Confirm — do not re-describe — the following are current and executable for
 this release:
 
-- [ ] [Rollback guide](../../runbooks/rollback-guide.md) — backend service, database, and smart-contract rollback procedures reviewed for anything this release changes.
+- [ ] [Rollback guide](./rollback-guide.md) — backend service, database, and smart-contract rollback procedures reviewed for anything this release changes.
 - [ ] [Ops deployment & rollback runbook](./ops-deployment-rollback.md) — fast/contract-emergency/full-revert paths still match the current deploy topology.
 - [ ] [Mainnet launch runbook — Rollback](./mainnet-launch.md#rollback) (production releases only).
 - [ ] Last known-good deploy identified and reachable in the Render dashboard before triggering this release.
@@ -84,12 +84,12 @@ this release:
 - [ ] Security Reviewer
 - [ ] Release Lead
 
-**Date Approved**: ___________
+**Date Approved**: \***\*\_\_\_\*\***
 
 ## Related
 
 - [Release readiness checklist](../release-readiness-checklist.md)
 - [Mainnet launch runbook](./mainnet-launch.md)
-- [Rollback guide](../../runbooks/rollback-guide.md)
+- [Rollback guide](./rollback-guide.md)
 - [Observability runbook](./observability.md)
 - [Contract release & upgrade runbook](../contract-release-and-upgrade-runbook.md)

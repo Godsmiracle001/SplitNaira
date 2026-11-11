@@ -3,6 +3,7 @@
 This runbook outlines the steps to perform a safe rollback of infrastructure, backend services, or smart contracts in the event of a critical failure.
 
 ## 1. Backend Service Rollback
+
 If a backend deployment introduces critical failures (e.g., 5xx error spikes, memory leaks):
 
 1. **Identify Stable Commit**: Use GitHub or your CI/CD platform to identify the last known stable commit hash.
@@ -22,6 +23,7 @@ If a backend deployment introduces critical failures (e.g., 5xx error spikes, me
 4. **Re-enable Writes After Verification**: Once the stable release is healthy and payout state is confirmed, restore `PAYMENTS_ADMIN_WRITE_ENABLED=true`.
 
 ## 2. Database Rollback
+
 If a migration corrupts data or causes schema mismatches:
 
 1. **Migration Revert**: If the migration has a safe `down` script, revert it using TypeORM:
@@ -31,6 +33,7 @@ If a migration corrupts data or causes schema mismatches:
 2. **Point-in-Time Recovery (PITR)**: If data is corrupted, use the cloud provider's PITR feature (AWS RDS, GCP Cloud SQL) to restore the database to the exact minute before the migration ran.
 
 ## 3. Smart Contract Rollback (Soroban)
+
 Soroban contracts cannot be easily "deleted" after deployment, but they can be upgraded or deprecated.
 
 1. **Immediate Halt**: If the contract is compromised, the `admin` account should invoke the `lock` or pause function to freeze state mutations.
@@ -39,9 +42,8 @@ Soroban contracts cannot be easily "deleted" after deployment, but they can be u
 
 ## Related Runbooks
 
-- [Stuck Payouts Incident Response](../docs/runbooks/stuck-payouts.md) — Playbook for delayed payouts, stuck transactions, and RPC degradation
-- [Ops Deployment & Rollback](../docs/runbooks/ops-deployment-rollback.md) — Contract metadata sync and rollback paths
-- [CI/CD Incident Management](../docs/runbooks/incident-management.md) — CI/CD, deploy, and runtime incident triage
-- [Postgres Backup & Restore](../docs/runbooks/postgres-backup-restore.md) — Issue #839 backup cadence, restore drill, and verification queries for the database half of a rollback
+- [Stuck Payouts Incident Response](./stuck-payouts.md) — Playbook for delayed payouts, stuck transactions, and RPC degradation
+- [Ops Deployment & Rollback](./ops-deployment-rollback.md) — Contract metadata sync and rollback paths
+- [CI/CD Incident Management](./incident-management.md) — CI/CD, deploy, and runtime incident triage
+- [Postgres Backup & Restore](./postgres-backup-restore.md) — Issue #839 backup cadence, restore drill, and verification queries for the database half of a rollback
 - [Production Secret Rotation](./production-secret-rotation.md) — Zero-downtime rotation and emergency secret rollback procedures
-

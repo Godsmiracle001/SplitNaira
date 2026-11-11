@@ -1,7 +1,7 @@
 # Deployment Rollback Drill Checklist
 
 Issue #1167. Rollback procedures exist ([Rollback Guide](./rollback-guide.md),
-[Ops Deployment & Rollback](../docs/runbooks/ops-deployment-rollback.md)),
+[Ops Deployment & Rollback](./ops-deployment-rollback.md)),
 but like backups, a rollback procedure that's never been exercised is a
 guess, not a plan. This checklist defines a scheduled drill to confirm the
 documented rollback steps actually work, on a staging environment, before
@@ -12,7 +12,7 @@ they're ever needed for real.
 - Run a rollback drill **quarterly**, and after any change to the deploy
   pipeline, contract upgrade mechanism, or the rollback runbooks themselves.
 - Align scheduling with the existing
-  [database backup restore drill](../runbooks/backup-restore-drill-schedule.md)
+  [database backup restore drill](./backup-restore-drill-schedule.md)
   where practical, since both exercise the same staging environment.
 
 ## Owner
@@ -38,7 +38,7 @@ other drills or reviewed separately.
    staging and confirm `/splits/admin/*` writes are rejected with
    `503 payments_admin_writes_disabled`.
 4. **Perform the rollback.** Follow the deploy-order steps in
-   [Ops Deployment & Rollback §Rollback](../docs/runbooks/ops-deployment-rollback.md#rollback)
+   [Ops Deployment & Rollback §Rollback](./ops-deployment-rollback.md#rollback)
    against staging (previous `CONTRACT_ID`/env values, redeploy backend and
    frontend).
 5. **Run smoke tests.** `GET /health` returns 200; `GET /ops/mainnet-readiness`
@@ -54,9 +54,9 @@ other drills or reviewed separately.
 - Actual contract `upgrade`/`pause_distributions` calls — these mutate
   on-chain state and aren't exercised in a routine drill. Reviewed
   separately alongside contract upgrade governance
-  ([ADR template](../docs/adr/0001-contract-upgrade-decision-record.md)).
+  ([ADR template](../adr/0001-contract-upgrade-decision-record.md)).
 - Point-in-time database recovery — covered by the
-  [backup restore drill](../runbooks/backup-restore-drill-schedule.md), not
+  [backup restore drill](./backup-restore-drill-schedule.md), not
   duplicated here.
 
 ## Success Criteria
@@ -81,6 +81,6 @@ other drills or reviewed separately.
 ## Related
 
 - [Rollback Guide](./rollback-guide.md)
-- [Ops Deployment & Rollback Runbook](../docs/runbooks/ops-deployment-rollback.md)
+- [Ops Deployment & Rollback Runbook](./ops-deployment-rollback.md)
 - [Database Backup Restore Drill Schedule](./backup-restore-drill-schedule.md)
-- [Stuck Payouts Incident Response](../docs/runbooks/stuck-payouts.md)
+- [Stuck Payouts Incident Response](./stuck-payouts.md)

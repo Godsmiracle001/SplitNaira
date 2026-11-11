@@ -3,36 +3,39 @@
 ## Implementation Plan
 
 ### Overview
+
 This PR addresses the ops workstream under API Evolution to accelerate deployment readiness for SplitNaira. The implementation focuses on auditing current implementation gaps, implementing production-grade improvements, adding tests and operational documentation, and ensuring changes are deploy-safe and rollback-aware.
 
 ### Audit Findings
 
 After a comprehensive audit of the current codebase, the following implementation gaps were identified and **all have been resolved**:
 
-| Area | Initial Status | Final Status | Risk Level |
-|------|---------------|--------------|-----------|
-| Error Handling | ⚠️ Partial | ✅ Complete | Low |
-| Input Validation | ⚠️ Incomplete | ✅ Complete | **Critical** |
-| Database Transactions | ❌ Missing | ✅ Complete | **Critical** |
-| Logging | ⚠️ Partial | ✅ Complete | Medium |
-| Rate Limiting | ✅ Good | ✅ Complete | Low |
-| Access Control | ✅ Good | ✅ Complete | Low |
-| Configuration | ✅ Good | ✅ Complete | Low |
-| Response Validation | ⚠️ Partial | ✅ Complete | Medium |
-| Migration Safety | ✅ Good | ✅ Complete | Low |
-| Test Coverage | ⚠️ Incomplete | ✅ Complete | Medium |
+| Area                  | Initial Status | Final Status | Risk Level   |
+| --------------------- | -------------- | ------------ | ------------ |
+| Error Handling        | ⚠️ Partial     | ✅ Complete  | Low          |
+| Input Validation      | ⚠️ Incomplete  | ✅ Complete  | **Critical** |
+| Database Transactions | ❌ Missing     | ✅ Complete  | **Critical** |
+| Logging               | ⚠️ Partial     | ✅ Complete  | Medium       |
+| Rate Limiting         | ✅ Good        | ✅ Complete  | Low          |
+| Access Control        | ✅ Good        | ✅ Complete  | Low          |
+| Configuration         | ✅ Good        | ✅ Complete  | Low          |
+| Response Validation   | ⚠️ Partial     | ✅ Complete  | Medium       |
+| Migration Safety      | ✅ Good        | ✅ Complete  | Low          |
+| Test Coverage         | ⚠️ Incomplete  | ✅ Complete  | Medium       |
 
 ### Implementation Summary
 
 #### Critical Fixes (Completed)
 
 **1. Input Validation Middleware**
+
 - **Issue**: `validate.ts` middleware had incomplete response structures
 - **Solution**: Corrected response JSON with proper status codes (400), requestId, and validation details
 - **File**: `backend/src/middleware/validate.ts`
 - **Impact**: API now returns well-formed validation error responses
 
 **2. Database Transaction Safety**
+
 - **Issue**: User registration lacked atomicity guarantees
 - **Solution**:
   - Added `withTransaction()` helper to database service
@@ -44,12 +47,14 @@ After a comprehensive audit of the current codebase, the following implementatio
 #### High-Priority Improvements (Completed)
 
 **3. Structured Logging**
+
 - **Issue**: Mixed console.log/error/warn calls not captured by log rotation
 - **Solution**: Replaced console calls with `logger` service throughout codebase
 - **Files**: `backend/src/services/logger.ts`, `backend/src/middleware/error.ts`, `backend/src/services/stellar.ts`
 - **Impact**: All logs now rotate, aggregate, and allow sensitive data redaction
 
 **4. Validation & RPC Error Handling**
+
 - **Issue**: Incomplete error responses in some routes
 - **Solution**: Added consistent `validation_error` and `rpc_error` response payloads
 - **Files**: `backend/src/routes/splits.ts`, `backend/src/routes/transactions.ts`
@@ -58,12 +63,14 @@ After a comprehensive audit of the current codebase, the following implementatio
 #### Medium-Priority Improvements (Completed)
 
 **5. Transaction Safety Tests**
+
 - **Issue**: No tests for database transaction rollback behavior
 - **Solution**: Added tests verifying transactions roll back on save failures
 - **File**: `backend/src/__tests__/users.test.ts`
 - **Impact**: Regression prevention; confirms atomicity works
 
 **6. RPC Retry Tests**
+
 - **Issue**: No tests for RPC retry policy and timeout behavior
 - **Solution**: Added comprehensive tests for retry logic, timeout handling, and error classification
 - **File**: `backend/src/__tests__/rpc-retries.test.ts`
@@ -72,18 +79,21 @@ After a comprehensive audit of the current codebase, the following implementatio
 ### Additional Ops Infrastructure (Already Implemented)
 
 **7. Health Checks**
+
 - Liveness, readiness, and startup probes
 - Database connectivity verification
 - Docker/Kubernetes deployment integration
 - **Files**: `backend/src/health/`, `backend/src/routes/health.ts`
 
 **8. Rate Limiting**
+
 - Layered rate limiting with global and per-endpoint limits
 - Configurable via environment variables
 - Proper 429 responses with Retry-After headers
 - **Files**: `backend/src/middleware/rate-limit.ts`
 
 **9. Observability**
+
 - `/metrics` endpoint for Prometheus with request volume, latency, and in-flight request gauges
 - Request correlation IDs (X-Correlation-Id)
 - Structured logging with requestId
@@ -91,6 +101,7 @@ After a comprehensive audit of the current codebase, the following implementatio
 - **Files**: `backend/src/routes/metrics.ts`, `backend/src/observability/`
 
 **10. Graceful Shutdown**
+
 - SIGTERM handler for clean shutdown
 - Database connection cleanup
 - In-flight request completion with timeout
@@ -99,6 +110,7 @@ After a comprehensive audit of the current codebase, the following implementatio
 ### Documentation Updates
 
 **Updated Files:**
+
 - `docs/compliance/ops-wave5.md` - Comprehensive ops compliance documentation
 - `docs/backend-release-ops-wave5.md` - Deployment and rollback procedures
 - `docs/runbooks/ops-deployment-rollback.md` - Operational runbooks
@@ -107,6 +119,7 @@ After a comprehensive audit of the current codebase, the following implementatio
 ### Deployment Safety
 
 #### Pre-Deployment Checklist
+
 - [ ] `npm run deps:check -w backend`
 - [ ] `npm run migration:run -w backend` (when DATABASE_URL points at target DB)
 - [ ] `npm run lint -w backend`
@@ -116,13 +129,16 @@ After a comprehensive audit of the current codebase, the following implementatio
 - [ ] Confirm `DATABASE_URL` and Stellar env vars match `backend/.env.example`
 
 #### Zero-Downtime Deployment
+
 This release is safe for zero-downtime deployment:
+
 1. **No schema changes** — No new migrations required
 2. **Backward compatible** — All API responses unchanged
 3. **Logging only** — Internal changes, no user-facing impact
 4. **Transactional** — All changes preserve data consistency
 
 #### Rollback Procedure
+
 ```bash
 # Quick rollback
 git revert <merge-commit-sha>
@@ -131,12 +147,14 @@ npm run build -w backend
 ```
 
 **Why rollback is low risk:**
+
 - No new migrations to revert
 - `withTransaction` only tightens behavior; reverting restores prior non-transactional mode
 - No destructive data migrations
 - No schema changes
 
 #### Monitor After Deploy or Rollback
+
 - `/health` success rate
 - User registration 4xx/5xx rates
 - Winston log volume and error spikes
@@ -166,6 +184,7 @@ All requests include correlation IDs, metrics exposed for Prometheus, and errors
 ### Testing Status
 
 All tests are passing and cover:
+
 - ✅ Transaction commit/rollback behavior
 - ✅ RPC retry logic with exponential backoff
 - ✅ Timeout handling for RPC operations
@@ -184,7 +203,7 @@ All tests are passing and cover:
 
 ### References
 
-- [Backend Compliance Audit](../BACKEND_COMPLIANCE_AUDIT.md) - Detailed audit findings
+- [Backend Compliance Audit](./reports/BACKEND_COMPLIANCE_AUDIT.md) - Detailed audit findings
 - [Backend Release Ops Wave 5](../docs/backend-release-ops-wave5.md) - Deployment procedures
 - [Ops Compliance Wave 5](../docs/compliance/ops-wave5.md) - Ops compliance details
 - [Wave 5 Completion Summary](../docs/WAVE5_COMPLETION_SUMMARY.md) - Overall achievements

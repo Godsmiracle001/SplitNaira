@@ -1,6 +1,6 @@
 # Markdown Link Health Check
 
-The CI pipeline validates relative links across all `docs/` and `runbooks/` Markdown files on every pull request that touches them.
+The CI pipeline validates relative links across all `docs/` Markdown files (runbooks live in `docs/runbooks/`) on every pull request that touches them.
 
 ## Running Locally
 
@@ -37,10 +37,10 @@ When the check reports a broken link:
 
 ## What Is Checked
 
-| Scope | Checked |
-|-------|---------|
-| `docs/**/*.md` | Yes |
-| `runbooks/**/*.md` | Yes |
-| Root-level `*.md` files (`README.md`, `CONTRIBUTING.md`, …) | Yes |
-| External `https://` URLs | No (intentionally excluded) |
-| Anchor fragments (`#section`) | No (not supported by this tool) |
+| Scope                                                       | Checked                         |
+| ----------------------------------------------------------- | ------------------------------- |
+| `docs/**/*.md`                                              | Yes                             |
+| `runbooks/**/*.md`                                          | Yes                             |
+| Root-level `*.md` files (`README.md`, `CONTRIBUTING.md`, …) | Yes                             |
+| External `https://` URLs                                    | No (intentionally excluded)     |
+| Anchor fragments (`#section`)                               | No (not supported by this tool) |

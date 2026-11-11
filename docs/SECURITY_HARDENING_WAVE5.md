@@ -17,23 +17,23 @@ Deliver production-grade security improvements to the SplitNaira Soroban contrac
 
 ### Critical / High
 
-| ID | Location | Finding | Status |
-|----|----------|---------|--------|
+| ID    | Location                                    | Finding                                                                                                                        | Status   |
+| ----- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------- |
 | SH-01 | `contracts/lib.rs` — `withdraw_unallocated` | Missing self-transfer guard: `to` could equal `env.current_contract_address()`, locking funds permanently inside the contract. | ✅ Fixed |
 
 ### Medium
 
-| ID | Location | Finding | Status |
-|----|----------|---------|--------|
-| SH-02 | `contracts/lib.rs` — `distribute` | Permissionless: any address can trigger distribution. Intentional design for automated/cron use, but should be documented. | ✅ Documented |
-| SH-03 | `contracts/errors.rs` | Error code namespace was fully consumed by code 16; new error variants required a gap extension. | ✅ Fixed (code 17 added) |
+| ID    | Location                          | Finding                                                                                                                    | Status                   |
+| ----- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| SH-02 | `contracts/lib.rs` — `distribute` | Permissionless: any address can trigger distribution. Intentional design for automated/cron use, but should be documented. | ✅ Documented            |
+| SH-03 | `contracts/errors.rs`             | Error code namespace was fully consumed by code 16; new error variants required a gap extension.                           | ✅ Fixed (code 17 added) |
 
 ### Low / Informational
 
-| ID | Location | Finding | Status |
-|----|----------|---------|--------|
-| SH-04 | `contracts/lib.rs` — `validate_collaborators` | `checked_add` correctly guards against basis-point overflow. No change required. | ✅ Confirmed safe |
-| SH-05 | All admin functions | `require_contract_admin` correctly calls `admin.require_auth()` after identity check. No auth-gap present. | ✅ Confirmed safe |
+| ID    | Location                                      | Finding                                                                                                    | Status            |
+| ----- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------- |
+| SH-04 | `contracts/lib.rs` — `validate_collaborators` | `checked_add` correctly guards against basis-point overflow. No change required.                           | ✅ Confirmed safe |
+| SH-05 | All admin functions                           | `require_contract_admin` correctly calls `admin.require_auth()` after identity check. No auth-gap present. | ✅ Confirmed safe |
 
 ---
 
@@ -115,6 +115,6 @@ If the hardened contract must be rolled back to the previous WASM:
 ## References
 
 - [RELIABILITY.md](../contracts/RELIABILITY.md)
-- [BACKEND_COMPLIANCE_AUDIT.md](../BACKEND_COMPLIANCE_AUDIT.md)
+- [BACKEND_COMPLIANCE_AUDIT.md](./reports/BACKEND_COMPLIANCE_AUDIT.md)
 - [contract-release-and-upgrade-runbook.md](contract-release-and-upgrade-runbook.md)
 - [Soroban Auth model](https://developers.stellar.org/docs/learn/smart-contract-internals/authorization)

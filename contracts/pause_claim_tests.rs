@@ -243,7 +243,7 @@ fn claim_after_unpause_returns_zero_without_moving_funds() {
 fn deposit_during_pause_is_claimable_only_after_unpause() {
     let f = fully_distributed_then_paused();
 
-    // Deposits stay open during a pause (see runbooks/stuck-payouts.md).
+    // Deposits stay open during a pause (see docs/runbooks/stuck-payouts.md).
     let top_up: i128 = 5_000_000;
     fund_and_deposit(&f.env, &f.client, &f.token, &f.project_id, &f.owner, top_up);
     assert_eq!(f.client.get_balance(&f.project_id), top_up);

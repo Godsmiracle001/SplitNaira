@@ -3,7 +3,7 @@
 > **Issue:** #839
 > **Track:** Stellar Wave
 > **Status:** Complete
-> **Related:** [`audit-log-retention.md`](../audit-log-retention.md), [`runbooks/rollback-guide.md`](../../runbooks/rollback-guide.md), [`runbooks/incident-management.md`](./incident-management.md), [`runbooks/observability.md`](./observability.md)
+> **Related:** [`audit-log-retention.md`](../audit-log-retention.md), [`runbooks/rollback-guide.md`](./rollback-guide.md), [`runbooks/incident-management.md`](./incident-management.md), [`runbooks/observability.md`](./observability.md)
 
 This runbook gives operators a concrete, drill-tested procedure for backing up
 the SplitNaira Postgres database, restoring it without losing audit log or
@@ -15,11 +15,11 @@ back. **Treat this as the authoritative procedure** for any environment
 
 ## 1. Backup cadence
 
-| Environment | Frequency | Retention window | Method |
-|---|---|---|---|
+| Environment    | Frequency                                                                                  | Retention window                          | Method                       |
+| -------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------- | ---------------------------- |
 | **Production** | Continuous (managed automated snapshot every 6 h) + **nightly logical dump retained 30 d** | 30 d nightly + 7 d point-in-time recovery | Managed snapshot + `pg_dump` |
-| **Staging** | Nightly at 02:00 UTC | 14 d nightly | `pg_dump` |
-| **Dev / CI** | On-demand only | Best-effort | `pg_dump` or ephemeral DB |
+| **Staging**    | Nightly at 02:00 UTC                                                                       | 14 d nightly                              | `pg_dump`                    |
+| **Dev / CI**   | On-demand only                                                                             | Best-effort                               | `pg_dump` or ephemeral DB    |
 
 Recovery objectives for production:
 
@@ -264,7 +264,7 @@ SQL
 
 Once the verification passes, point a temporary backend instance at
 the drill database and run the standard smoke checks
-(see [`runbooks/production-readiness.md`](../../runbooks/production-readiness.md)):
+(see [`runbooks/production-readiness.md`](./production-readiness.md)):
 
 ```bash
 BACKEND_BASE=https://<temp-backend-host>
@@ -314,18 +314,18 @@ The validation step:
 Exit code `0` means the drill passed. `1` means a critical finding. `2` means a
 usage problem, a refused target or an invalid baseline.
 
-| Finding | Severity | Meaning / action |
-|---|---|---|
-| `table-missing` | critical | The table is absent or unreadable in the restore. The backup or restore is incomplete. |
-| `row-count-mismatch` | critical | Rows were lost (−N) or extra rows appeared (+N). Check that the dump and the baseline come from the same point in time. |
-| `checksum-mismatch` | critical | Same row count, but different contents. The data was modified or corrupted. |
-| `financial-total-mismatch` | critical | A `token\|status` or `type` amount total differs. **Treat it as a financial incident**: don't promote this restore. |
-| `invalid-amount` | critical | A non-integer amount can't be reconciled to the stroop. |
-| audit findings (`transaction-ledger-reconciliation`, `duplicate-*`, …) | as reported | The restored data breaks an invariant the app relies on. |
-| `table-unavailable-at-capture` / `table-not-in-baseline` | warning | The table wasn't verified. Re-capture the baseline with it included. |
+| Finding                                                                | Severity    | Meaning / action                                                                                                        |
+| ---------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `table-missing`                                                        | critical    | The table is absent or unreadable in the restore. The backup or restore is incomplete.                                  |
+| `row-count-mismatch`                                                   | critical    | Rows were lost (−N) or extra rows appeared (+N). Check that the dump and the baseline come from the same point in time. |
+| `checksum-mismatch`                                                    | critical    | Same row count, but different contents. The data was modified or corrupted.                                             |
+| `financial-total-mismatch`                                             | critical    | A `token\|status` or `type` amount total differs. **Treat it as a financial incident**: don't promote this restore.     |
+| `invalid-amount`                                                       | critical    | A non-integer amount can't be reconciled to the stroop.                                                                 |
+| audit findings (`transaction-ledger-reconciliation`, `duplicate-*`, …) | as reported | The restored data breaks an invariant the app relies on.                                                                |
+| `table-unavailable-at-capture` / `table-not-in-baseline`               | warning     | The table wasn't verified. Re-capture the baseline with it included.                                                    |
 
 Record the drill's pass/fail result, the baseline file and `report.json` in
-the drill ticket. A drill only counts as passed when this step exits `0` *and*
+the drill ticket. A drill only counts as passed when this step exits `0` _and_
 the 3.4 smoke checks pass.
 
 ## 4. Audit log & transaction record handling
@@ -335,13 +335,13 @@ restore**. The SplitNaira operational model treats them as compliance
 artefacts with a defined retention policy
 (see [`audit-log-retention.md`](../audit-log-retention.md)).
 
-| Concern | Decision | Why |
-|---|---|---|
-| Audit log retention in backup | **Keep full audit history** in every backup | Compressed retention starts *after* restore is verified safe. |
-| Backups older than the audit retention window (2 years) | **Still retain the dump**, even if rows inside no longer match active retention | Backups are evidence, not active data. |
-| Transactions in `transactions` table | **Always restore** | They drive downstream payout history and SSE event projection. |
-| Token allowlist (read from contract, mirrored in `audit_log`) | **Always restore** | Mirrored allowlist writes are part of the audit trail. |
-| Temporary `audit_log` rows from QA automation | **Allow restore** but mark with `request_id` prefix `qa-` | Easier to filter if ever needed. |
+| Concern                                                       | Decision                                                                        | Why                                                            |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Audit log retention in backup                                 | **Keep full audit history** in every backup                                     | Compressed retention starts _after_ restore is verified safe.  |
+| Backups older than the audit retention window (2 years)       | **Still retain the dump**, even if rows inside no longer match active retention | Backups are evidence, not active data.                         |
+| Transactions in `transactions` table                          | **Always restore**                                                              | They drive downstream payout history and SSE event projection. |
+| Token allowlist (read from contract, mirrored in `audit_log`) | **Always restore**                                                              | Mirrored allowlist writes are part of the audit trail.         |
+| Temporary `audit_log` rows from QA automation                 | **Allow restore** but mark with `request_id` prefix `qa-`                       | Easier to filter if ever needed.                               |
 
 > **Important:** Never delete or shorten the `audit_log` table as part of
 > a restore. The retention sweep in `audit-log-retention.md` is a
@@ -350,14 +350,14 @@ artefacts with a defined retention policy
 
 ## 5. Rollback considerations during restore
 
-If the restore is being performed *because* of a failing deploy or
+If the restore is being performed _because_ of a failing deploy or
 illegal data shape, follow these rules to avoid rolling forward into a
 worse state:
 
 1. **Freeze writes first.** Set `PAYMENTS_ADMIN_WRITE_ENABLED=false`
-   on the *currently-live* backend and stop accepting new traffic at
+   on the _currently-live_ backend and stop accepting new traffic at
    the load balancer before the restore begins. The freeze is the same
-   switch documented in [`runbooks/rollback-guide.md`](../../runbooks/rollback-guide.md#1-backend-service-rollback).
+   switch documented in [`runbooks/rollback-guide.md`](./rollback-guide.md#1-backend-service-rollback).
 2. **Restore to a parallel instance, not in-place.** Point the new
    backend at the restored database and verify it before swapping the
    load balancer. In-place restoration requires turning the database
@@ -408,8 +408,8 @@ psql postgresql://splitnaira:splitnaira@localhost:5433/splitnaira_drill \
 
 ## 7. Cross-references
 
-- [`runbooks/rollback-guide.md`](../../runbooks/rollback-guide.md) — backend service rollback (including the write-disabling switch).
+- [`runbooks/rollback-guide.md`](./rollback-guide.md) — backend service rollback (including the write-disabling switch).
 - [`runbooks/incident-management.md`](./incident-management.md) — incident classes and recovery flow.
 - [`runbooks/observability.md`](./observability.md) — DB parity / health checks used after a restore.
-- [`audit-log-retention.md`](../audit-log-retention.md) — retention policy that runs *after* restore.
+- [`audit-log-retention.md`](../audit-log-retention.md) — retention policy that runs _after_ restore.
 - [`backend-deploy.md`](../backend-deploy.md) — production deploy pipeline that may trigger a restore.

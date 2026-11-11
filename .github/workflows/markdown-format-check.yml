@@ -5,12 +5,10 @@ on:
     branches: [main]
     paths:
       - "docs/**/*.md"
-      - "runbooks/**/*.md"
       - "*.md"
   pull_request:
     paths:
       - "docs/**/*.md"
-      - "runbooks/**/*.md"
       - "*.md"
 
 permissions:
@@ -38,7 +36,7 @@ jobs:
             BASE_SHA="$(git rev-parse HEAD^)"
           fi
 
-          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- 'docs/**/*.md' 'runbooks/**/*.md' '*.md')
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- 'docs/**/*.md' '*.md')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No Markdown files changed; skipping formatting validation."
             exit 0
