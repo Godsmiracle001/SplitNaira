@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { buildDepositUnsignedXdr } from "../services/splits.service.js";
 
+// The expiration store is off-chain (Postgres), which this unit test does not run.
+vi.mock("../services/project-expiration.js", () => ({
+  assertProjectNotExpired: vi.fn().mockResolvedValue(undefined),
+  getProjectExpiration: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../services/stellar.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/stellar.js")>();
   const cacheStore = new Map<string, unknown>([

@@ -133,6 +133,7 @@ vi.mock("../services/stellar.js", () => {
     // Cache stubs — no-ops so tests remain stateless
     getCached: () => undefined,
     setCached: () => undefined,
+    getCachedOrFetch: async <T>(_key: string, fetch: () => Promise<T>) => fetch(),
     invalidateCache: () => undefined,
     invalidateCacheByPrefix: () => undefined,
     getCacheStats: () => ({ size: 0, keys: [] }),
@@ -196,6 +197,28 @@ describe("E2E happy path: create → deposit → distribute → history", () => 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Read-only contract calls go through the real scValToNative and are
+    // schema-checked, so answer each with a real ScVal of the contract's
+    // return type. project_exists is false so the create step is allowed;
+    // the later steps read the project with get_project.
+    simulateTransactionMock.mockImplementation(async (tx: { preparedOperation?: { method?: string } }) => {
+      switch (tx?.preparedOperation?.method) {
+        case "project_exists":
+          return { result: { retval: nativeToScVal(false, { type: "bool" }) } };
+        case "is_distributions_paused":
+          return { result: { retval: nativeToScVal(false, { type: "bool" }) } };
+        case "get_balance":
+          return { result: { retval: nativeToScVal(DEPOSIT_AMOUNT, { type: "i128" }) } };
+        case "get_project":
+          return {
+            result: {
+              retval: nativeToScVal({ owner: OWNER, token: TOKEN, locked: false, collaborators: [] }),
+            },
+          };
+        default:
+          return { error: "HostError: unexpected call in e2e fake" };
+      }
+    });
   });
 
   // ── Step 1: Create ──────────────────────────────────────────────────────
@@ -240,7 +263,7 @@ describe("E2E happy path: create → deposit → distribute → history", () => 
 
     const res = await request(app)
       .post(`/splits/${PROJECT_ID}/deposit`)
-      .send({ from: COLLAB_A, amount: DEPOSIT_AMOUNT });
+      .send({ from: COLLAB_A, amount: DEPOSIT_AMOUNT, token: TOKEN });
 
     expect(res.status, `[deposit] unexpected status: ${JSON.stringify(res.body)}`).toBe(200);
     expect(res.body.xdr).toBe("XDR_DEPOSIT_E2E");
@@ -382,7 +405,7 @@ describe("E2E happy path: create → deposit → distribute → history", () => 
     prepareTransactionMock.mockResolvedValue(makeXdrMock("deposit", "XDR_FULL_DEPOSIT"));
     const depositRes = await request(app)
       .post(`/splits/${PROJECT_ID}/deposit`)
-      .send({ from: COLLAB_A, amount: DEPOSIT_AMOUNT });
+      .send({ from: COLLAB_A, amount: DEPOSIT_AMOUNT, token: TOKEN });
     expect(depositRes.status, `[full-flow deposit] ${JSON.stringify(depositRes.body)}`).toBe(200);
 
     // Step 3: distribute

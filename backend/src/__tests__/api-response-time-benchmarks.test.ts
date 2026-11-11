@@ -1,7 +1,14 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import { startTimer, endTimer } from "../lib/performance.js";
 import { app } from "../index.js";
+
+// Admin routes are only open when no key is configured (development); set one
+// so the missing-auth benchmark measures the real 401 path. Hoisted so it is
+// in place before the env is first read.
+vi.hoisted(() => {
+  process.env.PAYMENTS_ADMIN_API_KEY = "benchmark-admin-key";
+});
 
 interface BenchmarkResult {
   endpoint: string;
@@ -36,12 +43,14 @@ describe("API Response-Time Benchmarks", () => {
   };
 
   describe("health and status endpoints", () => {
-    it("GET /health returns within 100ms", async () => {
+    // Liveness measures the app's own overhead; readiness (/health) is 503
+    // here by design because tests run without a database or RPC.
+    it("GET /health/live returns within 100ms", async () => {
       startTimer("health");
-      const res = await request(app).get("/health");
+      const res = await request(app).get("/health/live");
       const latency = endTimer("health");
 
-      recordBenchmark("GET /health", "GET", latency, 100);
+      recordBenchmark("GET /health/live", "GET", latency, 100);
       expect(res.status).toBeLessThan(500);
       expect(latency).toBeLessThan(100);
     });
@@ -111,7 +120,7 @@ describe("API Response-Time Benchmarks", () => {
   describe("aggregation and analytical endpoints", () => {
     it("GET /admin/allowlist-status returns within 800ms", async () => {
       startTimer("allowlist-status");
-      const res = await request(app)
+      await request(app)
         .get("/admin/allowlist-status")
         .set("X-Admin-Token", "test");
       const latency = endTimer("allowlist-status");
@@ -122,7 +131,7 @@ describe("API Response-Time Benchmarks", () => {
 
     it("GET /admin/cache-stats returns within 300ms", async () => {
       startTimer("cache-stats");
-      const res = await request(app)
+      await request(app)
         .get("/admin/cache-stats")
         .set("X-Admin-Token", "test");
       const latency = endTimer("cache-stats");
@@ -158,11 +167,11 @@ describe("API Response-Time Benchmarks", () => {
     it("returns 401 for missing auth within 100ms", async () => {
       startTimer("missing-auth");
       const res = await request(app)
-        .post("/admin/allow-token")
+        .post("/splits/admin/allow-token")
         .send({ token: "TEST" });
       const latency = endTimer("missing-auth");
 
-      recordBenchmark("POST /admin/allow-token (401)", "POST", latency, 100);
+      recordBenchmark("POST /splits/admin/allow-token (401)", "POST", latency, 100);
       expect([401, 403]).toContain(res.status);
       expect(latency).toBeLessThan(100);
     });
@@ -171,7 +180,7 @@ describe("API Response-Time Benchmarks", () => {
   describe("pagination performance", () => {
     it("handles limit parameter within 100ms overhead", async () => {
       startTimer("pagination-small");
-      const res = await request(app)
+      await request(app)
         .get("/projects")
         .query({ limit: 10, offset: 0 });
       const latency = endTimer("pagination-small");
@@ -182,7 +191,7 @@ describe("API Response-Time Benchmarks", () => {
 
     it("handles large offset within reasonable time", async () => {
       startTimer("pagination-large-offset");
-      const res = await request(app)
+      await request(app)
         .get("/projects")
         .query({ limit: 10, offset: 5000 });
       const latency = endTimer("pagination-large-offset");

@@ -32,7 +32,6 @@ type EventShape = {
 type Events = Record<string, EventShape>;
 type Diff = { level: string; changes: Array<{ level: string; event: string; message: string }> };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let lib: any;
 
 beforeAll(async () => {
@@ -111,7 +110,8 @@ describe("extractEventContract", () => {
   });
 
   it("supports symbol_short! and ignores comments and test modules", () => {
-    const source = `${rustEvent(`(symbol_short!("short"), /* id */ self.project_id.clone()), self.amount // amt`)}
+    const source = `${rustEvent(`(symbol_short!("short"), /* id */ self.project_id.clone()), self.amount // amt
+`)}
 #[cfg(test)]
 mod tests { impl Publishable for Sample { fn publish(&self, env: &Env) { env.events().publish((Symbol::new(env, "ignored"),), ()); } } }`;
     expect(Object.keys(lib.extractEventContract(source))).toEqual(["short"]);

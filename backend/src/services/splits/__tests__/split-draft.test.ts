@@ -23,7 +23,7 @@ describe("split draft support (#1302)", () => {
     expect(draft.status).toBe("draft");
     expect(draft.title).toBe("WIP split");
     expect(isFinancialActionBlockedForDraft(draft)).toBe(true);
-    expect(() => assertNotDraft(draft)).toThrow(/financial_action_on_draft/);
+    expect(() => assertNotDraft(draft)).toThrow(expect.objectContaining({ code: "financial_action_on_draft" }));
   });
 
   it("distinguishes draft from published", () => {
@@ -52,13 +52,13 @@ describe("split draft support (#1302)", () => {
         { address: "GB", basisPoints: 5000 },
       ],
     });
-    expect(() => assertNotDraft(draft)).toThrow(/financial_action_on_draft/);
+    expect(() => assertNotDraft(draft)).toThrow(expect.objectContaining({ code: "financial_action_on_draft" }));
   });
 
   it("rejects publish when incomplete", () => {
     const draft = saveDraft({ owner: "GOWNER", title: "no token" });
     expect(() => publishDraft({ id: draft.id, owner: "GOWNER" })).toThrow(
-      /draft_incomplete/,
+      expect.objectContaining({ code: "draft_incomplete" }),
     );
   });
 

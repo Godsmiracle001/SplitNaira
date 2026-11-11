@@ -112,6 +112,19 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps implementations and unconsumed mock*Once values, so
+  // a response queued by one test would answer the next test's request.
+  // Fully reset the RPC fakes; the SDK module mocks above keep theirs.
+  for (const mock of [getAccountMock, prepareTransactionMock, simulateTransactionMock, getEventsMock]) {
+    mock.mockReset();
+  }
+  // Default: an empty contract with no projects and distributions running.
+  // Tests that need an existing project call mockOnChainProjectOwner.
+  simulateTransactionMock.mockImplementation(async (tx: { preparedOperation?: { method?: string } }) =>
+    tx?.preparedOperation?.method === "get_project" ? PROJECT_NOT_FOUND : {
+      result: { retval: onChainRetval(tx?.preparedOperation?.method, {}) },
+    },
+  );
   // Reads go through a shared cache; start every test from a cold cache so
   // one test's simulated RPC responses never answer another's request.
   resetReadCacheForTests();
@@ -619,15 +632,39 @@ describe("splits routes integration", () => {
  * (Issue #1092). Every simulateTransaction call returns a project owned by
  * `owner`; the read cache is cleared so each test sees its own on-chain state.
  */
+/**
+ * Answers each read-only contract call with a value of the type the real
+ * contract returns. RPC results are schema-validated, so a project object
+ * returned for `project_exists` (a bool) makes the route fail with 502.
+ */
+/** How the RPC reports a contract error, here SplitError::NotFound (#2). */
+const PROJECT_NOT_FOUND = { error: "HostError: Error(Contract, #2)" };
+
+function onChainRetval(method: string | undefined, project: Record<string, unknown>): unknown {
+  switch (method) {
+    case "get_balance":
+      return 0n;
+    case "project_exists":
+      return Object.keys(project).length > 0;
+    case "is_distributions_paused":
+      return false;
+    default:
+      return project;
+  }
+}
+
+/** Sets the on-chain project state without touching the read cache. */
+function mockOnChainProject(project: Record<string, unknown>) {
+  simulateTransactionMock.mockImplementation(
+    async (tx: { preparedOperation?: { method?: string } }) => ({
+      result: { retval: onChainRetval(tx?.preparedOperation?.method, project) },
+    }),
+  );
+}
+
 function mockOnChainProjectOwner(owner: string) {
   invalidateCacheByPrefix("project:");
-  simulateTransactionMock.mockImplementation(
-    async (tx: { preparedOperation?: { method?: string } }) =>
-      // fetchProjectById also reads the balance, which must decode as i128.
-      tx?.preparedOperation?.method === "get_balance"
-        ? { result: { retval: 0n } }
-        : { result: { retval: { owner, locked: false, collaborators: [] } } },
-  );
+  mockOnChainProject({ owner, locked: false, collaborators: [] });
 }
 
 describe("Issue #174: lock & update permissions and owner gating", () => {
@@ -787,6 +824,16 @@ describe("Issue #174: lock & update permissions and owner gating", () => {
   });
 
   it("full lifecycle: same owner can create → update collaborators → lock", async () => {
+    // The project does not exist until the create step; afterwards the
+    // update and lock steps read it (and its owner) from the chain.
+    let created = false;
+    simulateTransactionMock.mockImplementation(async (tx: { preparedOperation?: { method?: string } }) => {
+      const method = tx?.preparedOperation?.method;
+      if (method === "project_exists") return { result: { retval: created } };
+      return {
+        result: { retval: onChainRetval(method, { owner: VALID_OWNER, locked: false, collaborators: [] }) },
+      };
+    });
     getAccountMock.mockResolvedValue({ accountId: VALID_OWNER });
     prepareTransactionMock
       .mockResolvedValueOnce({
@@ -824,6 +871,7 @@ describe("Issue #174: lock & update permissions and owner gating", () => {
       .expect(200);
     expect(createRes.body.metadata.operation).toBe("create_project");
     expect(createRes.body.metadata.sourceAccount).toBe(VALID_OWNER);
+    created = true;
 
     // 2. Update collaborators (still pre-lock)
     const updateRes = await request(app)
@@ -922,7 +970,7 @@ describe("Issue #1092: project ownership validation on owner-gated mutations", (
 
     it(`${mutation.name} returns 404 when the project does not exist`, async () => {
       invalidateCacheByPrefix("project:");
-      simulateTransactionMock.mockResolvedValue({ result: undefined });
+      simulateTransactionMock.mockResolvedValue(PROJECT_NOT_FOUND);
 
       const response = await mutation.send(createApp(), OWNER).expect(404);
 
@@ -938,9 +986,7 @@ describe("Issue #1092: project ownership validation on owner-gated mutations", (
     await request(app).get("/splits/proj_own").expect(200);
 
     // Ownership transferred on-chain; the cache still says OWNER.
-    simulateTransactionMock.mockResolvedValue({
-      result: { retval: { owner: INTRUDER, locked: false, collaborators: [] } },
-    });
+    mockOnChainProject({ owner: INTRUDER, locked: false, collaborators: [] });
 
     const response = await request(app)
       .post("/splits/proj_own/lock")
@@ -952,9 +998,7 @@ describe("Issue #1092: project ownership validation on owner-gated mutations", (
 
   it("does not gate permissionless actions (deposit sender is not required to be the owner)", async () => {
     invalidateCacheByPrefix("project:");
-    simulateTransactionMock.mockResolvedValue({
-      result: { retval: { owner: OWNER, token: "GTOKEN", locked: false, collaborators: [] } },
-    });
+    mockOnChainProject({ owner: OWNER, token: "GTOKEN", locked: false, collaborators: [] });
 
     await request(createApp())
       .post("/splits/proj_own/deposit")
@@ -1241,8 +1285,10 @@ describe("POST /splits idempotency (Issue #888)", () => {
     expect(second.body).toEqual(first.body);
     expect(second.headers["idempotency-replayed"]).toBe("true");
     // The underlying build only ran once; the replay was served from the store.
+    // (getAccount is also called for the simulator account by the
+    // project_exists pre-check, so count only the owner's account loads.)
     expect(prepareTransactionMock).toHaveBeenCalledTimes(1);
-    expect(getAccountMock).toHaveBeenCalledTimes(1);
+    expect(getAccountMock.mock.calls.filter(([address]) => address === VALID_OWNER)).toHaveLength(1);
   });
 
   it("rejects a replay with the same key but a different payload with a stable 409 conflict", async () => {

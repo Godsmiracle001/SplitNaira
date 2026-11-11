@@ -49,7 +49,9 @@ describe("contract interface artifact", () => {
     expect(contractInterface.generatedBy).toBe("contracts/scripts/generate-interface.mjs");
     expect(contractInterface.methods.length).toBeGreaterThanOrEqual(27);
     expect(contractInterface.events.length).toBeGreaterThanOrEqual(7);
-    expect(contractInterface.errors).toHaveLength(21);
+    // 22 since AlreadyClaimed (#22) was added for the one-claim-per-epoch guard.
+    expect(contractInterface.errors).toHaveLength(22);
+    expect(contractInterface.errors.map((e: { name: string }) => e.name)).toContain("AlreadyClaimed");
   });
 
   it("covers backend write and read contract calls", () => {

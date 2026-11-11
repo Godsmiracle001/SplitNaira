@@ -21,7 +21,7 @@ describe("ownership transfer (#1297)", () => {
         actor: "GSTRANGER",
         newOwner: "GNEW",
       }),
-    ).toThrow(/forbidden_not_owner/);
+    ).toThrow(expect.objectContaining({ code: "forbidden_not_owner" }));
   });
 
   it("validates the new owner", () => {
@@ -32,14 +32,14 @@ describe("ownership transfer (#1297)", () => {
         actor: "GOWNER",
         newOwner: "GOWNER",
       }),
-    ).toThrow(/new_owner_same_as_current/);
+    ).toThrow(expect.objectContaining({ code: "new_owner_same_as_current" }));
     expect(() =>
       transferOwnership({
         projectId: "proj1",
         actor: "GOWNER",
         newOwner: "x",
       }),
-    ).toThrow(/invalid_new_owner/);
+    ).toThrow(expect.objectContaining({ code: "invalid_new_owner" }));
   });
 
   it("records the transfer in audit history and updates access", () => {

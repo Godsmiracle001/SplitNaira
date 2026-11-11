@@ -23,7 +23,7 @@ describe("split expiration (#1303)", () => {
         actor: "GOWNER",
         now: created,
       }),
-    ).toThrow(/expiration_before_creation/);
+    ).toThrow(expect.objectContaining({ code: "expiration_before_creation" }));
 
     const record = configureExpiration({
       projectId: "proj1",
@@ -49,7 +49,7 @@ describe("split expiration (#1303)", () => {
     });
     const after = new Date("2026-07-02T00:00:00.000Z");
     expect(isSplitExpired("proj1", after)).toBe(true);
-    expect(() => assertNotExpired("proj1", after)).toThrow(/split_expired/);
+    expect(() => assertNotExpired("proj1", after)).toThrow(expect.objectContaining({ code: "split_expired" }));
     expect(
       listExpirationEvents("proj1").some((e) => e.type === "expiration.reached"),
     ).toBe(true);

@@ -25,11 +25,16 @@ describe("TransactionRecord entity", () => {
       ["amount", "id", "recipient", "roundId", "status", "timestamp", "txHash", "token"].sort(),
     );
 
+    // Must match the migrated schema: 0000/0005 create the single-column
+    // indexes, 0007 adds recipient+timestamp, 0013 adds the keyset ones.
     expect(indexes.map((index) => index.name).sort()).toEqual(
       [
         "IDX_transactions_recipient",
+        "IDX_transactions_recipient_timestamp",
+        "IDX_transactions_recipient_timestamp_id",
         "IDX_transactions_round_id",
         "IDX_transactions_timestamp",
+        "IDX_transactions_timestamp_id",
         "IDX_transactions_tx_hash",
       ].sort(),
     );

@@ -10,6 +10,35 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { app } from "../index.js";
 
+const { buildCreateMock } = vi.hoisted(() => ({
+  buildCreateMock: vi.fn(async () => ({ xdr: "XDR_CREATE", metadata: { operation: "create_project" } })),
+}));
+
+// The expiration store is off-chain (Postgres), which this test does not run.
+vi.mock("../services/project-expiration.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/project-expiration.js")>()),
+  recordSplitCreated: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Stop at the contract boundary and record what would be sent on-chain.
+vi.mock("../services/splits.service.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/splits.service.js")>()),
+  buildCreateProjectUnsignedXdr: buildCreateMock,
+}));
+
+/**
+ * Pure-markup payloads sanitize to nothing and are rejected (400). Payloads
+ * with text inside the markup, such as "<script>alert(1)</script>", are
+ * accepted with the markup stripped by sanitizeString. Either way no markup
+ * may reach the contract call.
+ */
+function expectRejectedOrSanitized(status: number, field: "title" | "projectType") {
+  if (status === 400) return;
+  expect(status).toBe(200);
+  const sent = (buildCreateMock.mock.calls.at(-1) as unknown as [Record<string, string>])[0][field];
+  expect(sent).not.toMatch(/[<>]/);
+}
+
 vi.mock("@stellar/stellar-sdk", async (importOriginal) => ({
   // Real StrKey: env and address validation depend on its checksum logic.
   StrKey: (await importOriginal<typeof import("@stellar/stellar-sdk")>()).StrKey,
@@ -76,7 +105,7 @@ describe("Security: Reflected Validation Error Content", () => {
             ],
           });
 
-        expect(response.status).toBe(400);
+        expectRejectedOrSanitized(response.status, "title");
         const responseBody = JSON.stringify(response.body);
 
         expect(responseBody).not.toContain(payload);
@@ -105,7 +134,7 @@ describe("Security: Reflected Validation Error Content", () => {
             ],
           });
 
-        expect(response.status).toBe(400);
+        expectRejectedOrSanitized(response.status, "projectType");
         const responseBody = JSON.stringify(response.body);
 
         expect(responseBody).not.toContain(payload);
@@ -138,7 +167,7 @@ describe("Security: Reflected Validation Error Content", () => {
           ],
         });
 
-      expect(response.status).toBe(400);
+      expectRejectedOrSanitized(response.status, "title");
       const responseBody = JSON.stringify(response.body);
 
       expect(responseBody).not.toMatch(/<[^>]*>/);

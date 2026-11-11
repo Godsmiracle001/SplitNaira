@@ -27,7 +27,8 @@ describe("OpenAPI specification", () => {
 
   it("matches the committed docs/openapi.yaml (run `cd backend && npm run generate:openapi` if this fails)", () => {
     const generated = yaml.stringify(generateOpenApi());
-    const committed = readFileSync(committedSpecPath, "utf8");
+    // Git may check the file out with CRLF on Windows; compare content only.
+    const committed = readFileSync(committedSpecPath, "utf8").replace(/\r\n/g, "\n");
     expect(generated).toBe(committed);
   });
 });

@@ -45,6 +45,7 @@ vi.mock("../services/database.js", () => ({
       findOne: findOneMock,
       update: vi.fn(),
       save: vi.fn(),
+      upsert: vi.fn(),
       create: (x: unknown) => x,
       exists: vi.fn(),
     }),
@@ -236,7 +237,8 @@ describe("email enumeration (#1449)", () => {
       const withUnknownEmail = await login(app, { walletAddress: WALLET_UNKNOWN, email: UNKNOWN });
       const withoutEmail = await login(app, { walletAddress: WALLET_UNKNOWN });
 
-      expect(withoutEmail.status).toBe(404);
+      // Unknown wallets get the same generic 401 as any failed sign-in.
+      expect(withoutEmail.status).toBe(401);
       expect(observable(withKnownEmail)).toEqual(observable(withoutEmail));
       expect(observable(withUnknownEmail)).toEqual(observable(withoutEmail));
     });

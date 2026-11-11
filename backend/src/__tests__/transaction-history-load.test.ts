@@ -5,7 +5,6 @@ import { app } from "../index.js";
 
 describe("Transaction History Load Test", () => {
   const TEST_WALLET = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1";
-  const PAGINATION_SIZES = [10, 50, 100, 500];
   const LARGE_OFFSET = 5000;
 
   beforeAll(async () => {
