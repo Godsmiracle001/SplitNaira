@@ -178,6 +178,12 @@ pub enum DataKey {
     /// The `ClaimEpoch` value a collaborator last successfully claimed at.
     /// Presence indicates the collaborator has claimed within the current epoch.
     LastClaimEpoch(Symbol, Address),
+    /// Copy of `SplitProject::token`, which never changes after creation.
+    /// Lets `deposit` find the token without deserializing the whole project
+    /// (and its collaborator vector), keeping deposit cost independent of the
+    /// collaborator count. Projects created before this key existed get it
+    /// backfilled on their first deposit.
+    ProjectToken(Symbol),
 }
 
 /// Returned by `get_claimable`: how much a collaborator has received and the
@@ -466,6 +472,9 @@ impl SplitNairaContract {
         env.storage()
             .persistent()
             .set(&DataKey::ProjectBalance(project_id.clone()), &0i128);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ProjectToken(project_id.clone()), &project.token);
         Self::bump_project_ttl(&env, &project_id);
 
         // Increment global project count
@@ -636,13 +645,16 @@ impl SplitNairaContract {
             return Err(SplitError::InvalidAmount);
         }
 
-        let project = Self::get_project_or_err(&env, &project_id)?;
+        // Reads only the project's token, not the whole project, so deposit
+        // cost does not grow with the collaborator count. Also extends the
+        // project's TTL.
+        let project_token = Self::get_project_token_or_err(&env, &project_id)?;
         from.require_auth();
 
-        // Note: The token_client is derived directly from `project.token`.
+        // Note: The token_client is derived directly from the project's token.
         // This makes it correct by construction. If the user approved a different token,
         // the `token_client.transfer` call will simply fail at the Soroban level.
-        let token_client = token::Client::new(&env, &project.token);
+        let token_client = token::Client::new(&env, &project_token);
         let contract_address = env.current_contract_address();
         token_client.transfer(&from, &contract_address, &amount);
 
@@ -656,8 +668,7 @@ impl SplitNairaContract {
         env.storage()
             .persistent()
             .set(&DataKey::ProjectBalance(project_id.clone()), &new_balance);
-        Self::bump_project_ttl(&env, &project_id);
-        Self::adjust_accounted_token_balance(&env, &project.token, amount)?;
+        Self::adjust_accounted_token_balance(&env, &project_token, amount)?;
         // New funds open a fresh claim window for every collaborator.
         Self::bump_claim_epoch(&env, &project_id);
 
@@ -1357,6 +1368,29 @@ impl SplitNairaContract {
         Ok(project)
     }
 
+    /// Returns the project's token without loading the full project, and
+    /// extends the project's TTL. Falls back to the full project for projects
+    /// created before `DataKey::ProjectToken` existed, backfilling the key.
+    fn get_project_token_or_err(env: &Env, project_id: &Symbol) -> Result<Address, SplitError> {
+        let token_key = DataKey::ProjectToken(project_id.clone());
+        if let Some(token) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Address>(&token_key)
+        {
+            Self::bump_project_ttl(env, project_id);
+            return Ok(token);
+        }
+        let project = Self::get_project_or_err(env, project_id)?;
+        env.storage().persistent().set(&token_key, &project.token);
+        env.storage().persistent().extend_ttl(
+            &token_key,
+            PROJECT_TTL_THRESHOLD_LEDGERS,
+            PROJECT_TTL_BUMP_LEDGERS,
+        );
+        Ok(project.token)
+    }
+
     /// Performs a cheap key existence check without loading project data.
     fn has_project(env: &Env, project_id: &Symbol) -> bool {
         env.storage()
@@ -1379,6 +1413,16 @@ impl SplitNairaContract {
             PROJECT_TTL_THRESHOLD_LEDGERS,
             PROJECT_TTL_BUMP_LEDGERS,
         );
+        // Keep the token copy alive alongside the project. Absent only for
+        // projects created before the key existed and not yet backfilled.
+        let token_key = DataKey::ProjectToken(project_id.clone());
+        if env.storage().persistent().has(&token_key) {
+            env.storage().persistent().extend_ttl(
+                &token_key,
+                PROJECT_TTL_THRESHOLD_LEDGERS,
+                PROJECT_TTL_BUMP_LEDGERS,
+            );
+        }
     }
 
     /// Extends TTL for collaborator-level claimed ledger when the key exists.

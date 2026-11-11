@@ -143,13 +143,14 @@ fn test_deposit_cost_benchmark() {
             collab_count, cost.cpu_instructions, cost.memory_bytes
         );
 
-        // `deposit` is O(N) in practice: every call loads (and re-stores) the
-        // full `SplitProject`, whose collaborator vector grows with N.
-        // Ceilings are ~1.5x of the measured baseline
+        // `deposit` reads only the project's token key, not the full
+        // `SplitProject`; the remaining growth with N is the TTL extension of
+        // the project entry, which is charged by entry size.
+        // Ceilings are ~1.4x of the measured baseline
         // (docs/contract-cost-benchmarks.md):
-        //   2   collabs -> ~330k CPU / ~50k mem
-        //   50  collabs -> ~547k CPU / ~93k mem
-        //   200 collabs -> ~1.13M CPU / ~179k mem
+        //   2   collabs -> ~389k CPU / ~57k mem
+        //   50  collabs -> ~613k CPU / ~102k mem
+        //   200 collabs -> ~1.20M CPU / ~190k mem
         let (cpu_ceiling, mem_ceiling) = match collab_count {
             2 => (500_000, 80_000),
             50 => (900_000, 150_000),

@@ -1052,6 +1052,63 @@ fn test_deposit_success() {
     assert_eq!(client.get_balance(&project_id), 1_000_0000000i128);
 }
 
+/// Projects created before `DataKey::ProjectToken` existed have no token
+/// copy. Their first deposit must still work, using the full project, and
+/// must backfill the key so later deposits take the cheap path.
+#[test]
+fn test_deposit_backfills_token_key_for_pre_existing_projects() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let funder = Address::generate(&env);
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[Address::generate(&env), Address::generate(&env)]),
+        Vec::from_slice(&env, &[5000u32, 5000u32]),
+    );
+    let project_id = Symbol::new(&env, "legacy_proj");
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Legacy"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    let token_key = DataKey::ProjectToken(project_id.clone());
+    env.as_contract(&contract_id, || {
+        env.storage().persistent().remove(&token_key);
+    });
+
+    deposit_to_project(&env, &client, &token, &project_id, &funder, 500);
+    assert_eq!(client.get_balance(&project_id), 500);
+
+    let stored = env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .get::<DataKey, Address>(&token_key)
+    });
+    assert_eq!(stored, Some(token.clone()));
+
+    deposit_to_project(&env, &client, &token, &project_id, &funder, 250);
+    assert_eq!(client.get_balance(&project_id), 750);
+}
+
+#[test]
+fn test_deposit_rejects_unknown_project() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+    let funder = Address::generate(&env);
+    token::StellarAssetClient::new(&env, &token).mint(&funder, &100);
+
+    let result = client.try_deposit(&Symbol::new(&env, "missing"), &funder, &100);
+    assert_eq!(result, Err(Ok(SplitError::NotFound)));
+}
+
 #[test]
 fn test_deposit_rejects_zero_amount() {
     let (env, _admin, token) = create_test_env();

@@ -19,7 +19,7 @@ To guarantee transaction reliability on Stellar mainnet and testnet, all executi
 
 | Path             | Complexity                                          | Description                                                                                                                               | Resource Consumption                                                                                    |
 | :--------------- | :-------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| **`deposit`**    | $\mathcal{O}(1)$                                    | Transfers tokens into the contract and updates the internal project balance.                                                              | Constant (~200k CPU instructions, ~30k RAM bytes), independent of collaborator count.                   |
+| **`deposit`**    | $\mathcal{O}(1)$ reads, $\mathcal{O}(N)$ TTL rent   | Transfers tokens into the contract and updates the internal project balance.                                                              | ~390k CPU at 2 collaborators to ~1.2M at 200; only the project TTL extension grows with size.           |
 | **`distribute`** | $\mathcal{O}(N)$                                    | Push payout: iterates over all $N$ collaborators, calculates basis point allocations, transfers tokens, updates storage and emits events. | Scales linearly with collaborator count $N$.                                                            |
 | **`claim`**      | $\mathcal{O}(N)$ lookup / $\mathcal{O}(1)$ transfer | Pull payout: a single collaborator withdraws their individual allocation.                                                                 | Low constant execution footprint (~350k–500k CPU instructions), independent of batch distribution size. |
 
@@ -42,9 +42,9 @@ cargo test --manifest-path contracts/Cargo.toml --features testutils cost_benchm
 
 | Execution Path        | Collaborator Count | CPU Instructions (measured)                                                           | Memory Bytes (measured) | Soroban Budget Headroom |
 | :-------------------- | :----------------- | :------------------------------------------------------------------------------------ | :---------------------- | :---------------------- |
-| `deposit`             | 2                  | ~330,000                                                                              | ~50,000                 | > 99% Headroom          |
-| `deposit`             | 50                 | ~547,000                                                                              | ~93,000                 | > 99% Headroom          |
-| `deposit`             | 200                | ~1,130,000                                                                            | ~179,000                | > 98% Headroom          |
+| `deposit`             | 2                  | ~389,000                                                                              | ~57,000                 | > 99% Headroom          |
+| `deposit`             | 50                 | ~613,000                                                                              | ~102,000                | > 99% Headroom          |
+| `deposit`             | 200                | ~1,200,000                                                                            | ~190,000                | > 98% Headroom          |
 | `claim` (1 recipient) | 2                  | ~485,000                                                                              | ~80,000                 | > 99% Headroom          |
 | `claim` (1 recipient) | 50                 | ~981,000                                                                              | ~192,000                | > 99% Headroom          |
 | `claim` (1 recipient) | 200                | ~2,357,000                                                                            | ~458,000                | > 97% Headroom          |
@@ -54,9 +54,11 @@ cargo test --manifest-path contracts/Cargo.toml --features testutils cost_benchm
 | `distribute`          | 200 (Hard Cap Max) | **not measurable** — exceeds the ~100M per-transaction instruction budget (see below) | —                       | —                       |
 
 > Costs are measured by `cargo test … cost_benchmark_tests -- --nocapture`.
-> Note that `deposit` is _not_ O(1): each call loads and re-stores the full
-> `SplitProject`, including its collaborator vector, so cost grows with the
-> collaborator count (though far slower than `distribute`).
+> `deposit` reads only `DataKey::ProjectToken` (a copy of the project token),
+> not the full `SplitProject`. Before this, it deserialized the whole
+> collaborator vector on every call, and cost had grown to ~1.92M CPU at 200
+> collaborators. What still grows with the collaborator count is extending
+> the project entry's TTL, which Soroban charges by entry size.
 
 ---
 
