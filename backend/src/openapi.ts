@@ -1012,16 +1012,110 @@ registry.registerPath({
   },
 });
 
+// ─── Wallet sign-in (SEP-10) ──────────────────────────────────────────────────
+
+const signedChallengeSchema = z
+  .string()
+  .min(1)
+  .describe("Base64 XDR of the GET /auth/challenge transaction after the wallet signs it");
+
+registry.registerPath({
+  method: "get",
+  path: "/auth/challenge",
+  summary: "Get a wallet sign-in challenge",
+  description:
+    "Returns a SEP-10 challenge transaction for the wallet to sign with signTransaction. It is time-bounded (5 minutes), uses sequence 0 and is never submitted to the network.",
+  tags: ["Auth"],
+  request: { query: z.object({ account: stellarAddressSchema }) },
+  responses: {
+    200: {
+      description: "Challenge to sign",
+      content: {
+        "application/json": {
+          schema: z.object({
+            challenge: z.string(),
+            networkPassphrase: z.string(),
+            expiresAt: z.number().int().describe("Epoch milliseconds"),
+          }),
+        },
+      },
+    },
+    ...standardErrorResponses({ badRequest: true }),
+  },
+});
+
+// ─── Off-chain project lifecycle: cancel / archive / restore ─────────────────
+
+const lifecycleRecordSchema = z.object({
+  projectId: z.string(),
+  cancelled: z.boolean(),
+  cancelledAt: z.string().nullable(),
+  cancelReason: z.string().nullable(),
+  archived: z.boolean(),
+  archivedAt: z.string().nullable(),
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/splits/{projectId}/lifecycle",
+  summary: "Cancellation and archival status",
+  description: "Off-chain lifecycle records for a project.",
+  tags: ["Splits"],
+  request: { params: z.object({ projectId: z.string() }) },
+  responses: {
+    200: { description: "Lifecycle status", content: { "application/json": { schema: lifecycleRecordSchema } } },
+    ...standardErrorResponses({ badRequest: true }),
+  },
+});
+
+for (const [action, summary, description] of [
+  [
+    "cancel",
+    "Cancel a split before it distributes",
+    "Blocks new funding through the API. Refused (409 NOT_CANCELLABLE) once distribution has started. Off-chain: the contract has no cancel function, so a direct contract deposit is not prevented.",
+  ],
+  [
+    "archive",
+    "Archive a project",
+    "Blocks funding, distribution and collaborator edits through the API until restored. History stays readable.",
+  ],
+  ["restore", "Restore an archived project", "Re-enables state-changing actions."],
+] as const) {
+  registry.registerPath({
+    method: "post",
+    path: `/splits/{projectId}/${action}`,
+    summary,
+    description: `Owner only: requires a session (Authorization: Bearer) for the wallet that owns the project on-chain. ${description}`,
+    tags: ["Splits"],
+    request: {
+      params: z.object({ projectId: z.string() }),
+      body: { content: { "application/json": { schema: z.object({ reason: z.string().max(500).optional() }) } } },
+    },
+    responses: {
+      200: {
+        description: "Updated lifecycle record",
+        content: { "application/json": { schema: z.record(z.string(), z.unknown()) } },
+      },
+      ...standardErrorResponses({ badRequest: true, unauthorized: true, notFound: true, conflict: true }),
+    },
+  });
+}
+
 // ─── User Endpoints ───────────────────────────────────────────────────────────
 
 registry.registerPath({
   method: "post",
   path: "/users/register",
   summary: "Register a new user",
-  description: "Creates a user profile linked to a Stellar wallet address.",
+  description:
+    "Creates a user profile linked to a Stellar wallet address. Requires a challenge from GET /auth/challenge signed by that wallet, so nobody can register an address they do not control.",
   tags: ["Users"],
   request: {
-    body: { content: { "application/json": { schema: userRegistrationSchema } } },
+    body: {
+      content: {
+        "application/json": { schema: userRegistrationSchema.extend({ signedChallenge: signedChallengeSchema }) },
+      },
+    },
   },
   responses: {
     201: {
@@ -1035,14 +1129,14 @@ registry.registerPath({
 registry.registerPath({
   method: "post",
   path: "/users/login",
-  summary: "Log in by wallet address",
-  description: "Returns a JWT for an active registered wallet. Five failed attempts within 15 minutes lock that wallet for 15 minutes. Unknown, inactive, deleted, and locked wallets receive the same 401 response. The existing per-IP limiter may also return 429.",
+  summary: "Log in with a signed wallet challenge",
+  description: "Verifies a challenge from GET /auth/challenge signed by the wallet, then returns a JWT for an active registered wallet. Each signed challenge is accepted once; a bad signature is a failed attempt. Five failed attempts within 15 minutes lock that wallet for 15 minutes. Unknown, inactive, deleted, and locked wallets receive the same 401 response. The existing per-IP limiter may also return 429.",
   tags: ["Users"],
   request: {
     body: {
       content: {
         "application/json": {
-          schema: z.object({ walletAddress: stellarAddressSchema }),
+          schema: z.object({ walletAddress: stellarAddressSchema, signedChallenge: signedChallengeSchema }),
         },
       },
     },

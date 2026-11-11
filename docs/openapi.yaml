@@ -2331,10 +2331,307 @@ paths:
                 error: INTERNAL_ERROR
                 message: An unexpected error occurred. Please try again later.
                 requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+  /auth/challenge:
+    get:
+      summary: Get a wallet sign-in challenge
+      description: Returns a SEP-10 challenge transaction for the wallet to sign with
+        signTransaction. It is time-bounded (5 minutes), uses sequence 0 and is
+        never submitted to the network.
+      tags:
+        - Auth
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+          required: true
+          name: account
+          in: query
+      responses:
+        "200":
+          description: Challenge to sign
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challenge:
+                    type: string
+                  networkPassphrase:
+                    type: string
+                  expiresAt:
+                    type: integer
+                    description: Epoch milliseconds
+                required:
+                  - challenge
+                  - networkPassphrase
+                  - expiresAt
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /splits/{projectId}/lifecycle:
+    get:
+      summary: Cancellation and archival status
+      description: Off-chain lifecycle records for a project.
+      tags:
+        - Splits
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: projectId
+          in: path
+      responses:
+        "200":
+          description: Lifecycle status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projectId:
+                    type: string
+                  cancelled:
+                    type: boolean
+                  cancelledAt:
+                    type: string
+                    nullable: true
+                  cancelReason:
+                    type: string
+                    nullable: true
+                  archived:
+                    type: boolean
+                  archivedAt:
+                    type: string
+                    nullable: true
+                required:
+                  - projectId
+                  - cancelled
+                  - cancelledAt
+                  - cancelReason
+                  - archived
+                  - archivedAt
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /splits/{projectId}/cancel:
+    post:
+      summary: Cancel a split before it distributes
+      description: "Owner only: requires a session (Authorization: Bearer) for the
+        wallet that owns the project on-chain. Blocks new funding through the
+        API. Refused (409 NOT_CANCELLABLE) once distribution has started.
+        Off-chain: the contract has no cancel function, so a direct contract
+        deposit is not prevented."
+      tags:
+        - Splits
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: projectId
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Updated lifecycle record
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  nullable: true
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: UNAUTHORIZED
+                message: Missing or invalid bearer token / admin API key.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: NOT_FOUND
+                message: Project afrobeats_001 does not exist.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+        "409":
+          description: Conflict with existing resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: CONFLICT
+                message: A project with ID "afrobeats_001" already exists.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+  /splits/{projectId}/archive:
+    post:
+      summary: Archive a project
+      description: "Owner only: requires a session (Authorization: Bearer) for the
+        wallet that owns the project on-chain. Blocks funding, distribution and
+        collaborator edits through the API until restored. History stays
+        readable."
+      tags:
+        - Splits
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: projectId
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Updated lifecycle record
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  nullable: true
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: UNAUTHORIZED
+                message: Missing or invalid bearer token / admin API key.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: NOT_FOUND
+                message: Project afrobeats_001 does not exist.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+        "409":
+          description: Conflict with existing resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: CONFLICT
+                message: A project with ID "afrobeats_001" already exists.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+  /splits/{projectId}/restore:
+    post:
+      summary: Restore an archived project
+      description: "Owner only: requires a session (Authorization: Bearer) for the
+        wallet that owns the project on-chain. Re-enables state-changing
+        actions."
+      tags:
+        - Splits
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: projectId
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Updated lifecycle record
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  nullable: true
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: UNAUTHORIZED
+                message: Missing or invalid bearer token / admin API key.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: NOT_FOUND
+                message: Project afrobeats_001 does not exist.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
+        "409":
+          description: Conflict with existing resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                error: CONFLICT
+                message: A project with ID "afrobeats_001" already exists.
+                requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
   /users/register:
     post:
       summary: Register a new user
-      description: Creates a user profile linked to a Stellar wallet address.
+      description: Creates a user profile linked to a Stellar wallet address. Requires
+        a challenge from GET /auth/challenge signed by that wallet, so nobody
+        can register an address they do not control.
       tags:
         - Users
       requestBody:
@@ -2360,8 +2657,14 @@ paths:
                     - customer
                     - driver
                   default: customer
+                signedChallenge:
+                  type: string
+                  minLength: 1
+                  description: Base64 XDR of the GET /auth/challenge transaction after the wallet
+                    signs it
               required:
                 - walletAddress
+                - signedChallenge
       responses:
         "201":
           description: Registered user profile
@@ -2426,11 +2729,13 @@ paths:
                 requestId: b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d
   /users/login:
     post:
-      summary: Log in by wallet address
-      description: Returns a JWT for an active registered wallet. Five failed attempts
-        within 15 minutes lock that wallet for 15 minutes. Unknown, inactive,
-        deleted, and locked wallets receive the same 401 response. The existing
-        per-IP limiter may also return 429.
+      summary: Log in with a signed wallet challenge
+      description: Verifies a challenge from GET /auth/challenge signed by the wallet,
+        then returns a JWT for an active registered wallet. Each signed
+        challenge is accepted once; a bad signature is a failed attempt. Five
+        failed attempts within 15 minutes lock that wallet for 15 minutes.
+        Unknown, inactive, deleted, and locked wallets receive the same 401
+        response. The existing per-IP limiter may also return 429.
       tags:
         - Users
       requestBody:
@@ -2442,8 +2747,14 @@ paths:
                 walletAddress:
                   type: string
                   minLength: 1
+                signedChallenge:
+                  type: string
+                  minLength: 1
+                  description: Base64 XDR of the GET /auth/challenge transaction after the wallet
+                    signs it
               required:
                 - walletAddress
+                - signedChallenge
       responses:
         "200":
           description: Authenticated user with JWT

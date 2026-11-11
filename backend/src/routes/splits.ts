@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction, Router } from "express";
+import { z } from "zod";
 import {
   Address,
   BASE_FEE,
@@ -87,6 +88,14 @@ import {
 import { logger } from "../services/logger.js";
 import { idempotencyMiddleware } from "../middleware/idempotency.js";
 import { recordProjectEdit } from "../services/project-history.js";
+import {
+  archive,
+  assertProjectActionAllowed,
+  cancelProject,
+  getProjectLifecycle,
+  restore,
+} from "../services/project-lifecycle.js";
+import { requireStellarAddress } from "../middleware/project-access.js";
 import {
   assertProjectNotExpired,
   configureProjectExpiration,
@@ -195,6 +204,94 @@ splitsRouter.get("/:projectId", ctrl.getProject.bind(ctrl));
  */
 splitsRouter.post("/:projectId/lock", ctrl.lockProject.bind(ctrl));
 splitsRouter.post("/:projectId/deposit", ctrl.deposit.bind(ctrl));
+
+// ── Off-chain lifecycle: cancel (#1304), archive, restore ──────────────────
+// These write our own records rather than build a transaction for a wallet
+// to sign, so the caller must be signed in as the on-chain owner; an owner
+// address in the body would prove nothing.
+
+const lifecycleBodySchema = z.object({ reason: z.string().trim().max(500).optional() });
+
+function parseProjectIdOrThrow(raw: unknown): string {
+  const parsed = projectIdParamSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new AppError(ErrorType.VALIDATION, ErrorCode.VALIDATION_ERROR, "Invalid projectId format.");
+  }
+  return parsed.data;
+}
+
+/**
+ * @openapi
+ * GET /splits/{projectId}/lifecycle
+ * summary: Cancellation and archival status
+ * description: Off-chain lifecycle records for a project. Read-only and public.
+ * tags: [Splits]
+ */
+splitsRouter.get("/:projectId/lifecycle", async (req, res, next) => {
+  try {
+    return res.status(200).json(await getProjectLifecycle(parseProjectIdOrThrow(req.params.projectId)));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * POST /splits/{projectId}/cancel
+ * summary: Cancel a split before it distributes
+ * description: Owner only (session required). Blocks new funding through the API. Off-chain; the contract has no cancel function.
+ * tags: [Splits]
+ */
+splitsRouter.post("/:projectId/cancel", requireStellarAddress, async (req, res, next) => {
+  try {
+    const projectId = parseProjectIdOrThrow(req.params.projectId);
+    const { reason } = lifecycleBodySchema.parse(req.body ?? {});
+    const owner = res.locals.requesterAddress as string;
+    await assertProjectOwner(projectId, owner);
+    const record = await cancelProject(projectId, owner, reason);
+    invalidateCache(`project:${projectId}`);
+    return res.status(200).json({ cancellation: record });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * POST /splits/{projectId}/archive
+ * summary: Archive a project
+ * description: Owner only (session required). Freezes funding, distribution and collaborator edits through the API until restored. History stays readable.
+ * tags: [Splits]
+ */
+splitsRouter.post("/:projectId/archive", requireStellarAddress, async (req, res, next) => {
+  try {
+    const projectId = parseProjectIdOrThrow(req.params.projectId);
+    const { reason } = lifecycleBodySchema.parse(req.body ?? {});
+    const owner = res.locals.requesterAddress as string;
+    await assertProjectOwner(projectId, owner);
+    return res.status(200).json({ archival: await archive(projectId, owner, reason) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * POST /splits/{projectId}/restore
+ * summary: Restore an archived project
+ * description: Owner only (session required).
+ * tags: [Splits]
+ */
+splitsRouter.post("/:projectId/restore", requireStellarAddress, async (req, res, next) => {
+  try {
+    const projectId = parseProjectIdOrThrow(req.params.projectId);
+    const owner = res.locals.requesterAddress as string;
+    await assertProjectOwner(projectId, owner);
+    return res.status(200).json({ archival: await restore(projectId, owner) });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 splitsRouter.patch("/:projectId/expiration", async (req, res, next) => {
   try {
@@ -345,6 +442,7 @@ splitsRouter.put("/:projectId/collaborators", async (req, res, next) => {
     }
 
     try {
+      await assertProjectActionAllowed(parsedParams.data, "edit_collaborators");
       const result = await buildUpdateCollaboratorsUnsignedXdr({
         projectId: parsedParams.data,
         owner: parsedBody.data.owner,
@@ -423,6 +521,7 @@ splitsRouter.post(
       }
       const projectId = parsedId.data;
       await assertProjectNotExpired(projectId);
+      await assertProjectActionAllowed(projectId, "distribute");
 
       const parsedBody = distributeSchema.safeParse(req.body);
       if (!parsedBody.success) {

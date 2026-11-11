@@ -780,6 +780,65 @@
         ]
       }
     },
+    "/auth/challenge": {
+      "get": {
+        "description": "Returns a SEP-10 challenge transaction for the wallet to sign with signTransaction. It is time-bounded (5 minutes), uses sequence 0 and is never submitted to the network.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "challenge": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "description": "Epoch milliseconds",
+                      "type": "integer"
+                    },
+                    "networkPassphrase": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "challenge",
+                    "networkPassphrase",
+                    "expiresAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Challenge to sign"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "Get a wallet sign-in challenge",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/events": {
       "get": {
         "description": "Opens a Server-Sent Events stream and emits a `transaction_update` event each time the backend observes an update for the given `txHash`. Limited to 5 concurrent subscribers per `txHash` (configurable via `SSE_MAX_LISTENERS_PER_TXHASH`); exceeding it returns 429.\n\nExample frame:\n```\nevent: transaction_update\ndata: {\"txHash\":\"3389e9f0f1a65f19736cacf544c2e825313e8447f569233bb8db39aa607c8fc\",\"status\":\"pending\"}\n\n```",
@@ -2536,6 +2595,214 @@
         ]
       }
     },
+    "/splits/{projectId}/archive": {
+      "post": {
+        "description": "Owner only: requires a session (Authorization: Bearer) for the wallet that owns the project on-chain. Blocks funding, distribution and collaborator edits through the API until restored. History stays readable.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "reason": {
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "nullable": true
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Updated lifecycle record"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "UNAUTHORIZED",
+                  "message": "Missing or invalid bearer token / admin API key.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "NOT_FOUND",
+                  "message": "Project afrobeats_001 does not exist.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "CONFLICT",
+                  "message": "A project with ID \"afrobeats_001\" already exists.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict with existing resource"
+          }
+        },
+        "summary": "Archive a project",
+        "tags": [
+          "Splits"
+        ]
+      }
+    },
+    "/splits/{projectId}/cancel": {
+      "post": {
+        "description": "Owner only: requires a session (Authorization: Bearer) for the wallet that owns the project on-chain. Blocks new funding through the API. Refused (409 NOT_CANCELLABLE) once distribution has started. Off-chain: the contract has no cancel function, so a direct contract deposit is not prevented.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "reason": {
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "nullable": true
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Updated lifecycle record"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "UNAUTHORIZED",
+                  "message": "Missing or invalid bearer token / admin API key.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "NOT_FOUND",
+                  "message": "Project afrobeats_001 does not exist.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "CONFLICT",
+                  "message": "A project with ID \"afrobeats_001\" already exists.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict with existing resource"
+          }
+        },
+        "summary": "Cancel a split before it distributes",
+        "tags": [
+          "Splits"
+        ]
+      }
+    },
     "/splits/{projectId}/claim": {
       "post": {
         "description": "Builds an unsigned XDR allowing a collaborator to claim their allocated share from a project.",
@@ -3374,6 +3641,78 @@
         ]
       }
     },
+    "/splits/{projectId}/lifecycle": {
+      "get": {
+        "description": "Off-chain lifecycle records for a project.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "archived": {
+                      "type": "boolean"
+                    },
+                    "archivedAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "cancelReason": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "cancelled": {
+                      "type": "boolean"
+                    },
+                    "cancelledAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "cancelled",
+                    "cancelledAt",
+                    "cancelReason",
+                    "archived",
+                    "archivedAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Lifecycle status"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "summary": "Cancellation and archival status",
+        "tags": [
+          "Splits"
+        ]
+      }
+    },
     "/splits/{projectId}/lock": {
       "post": {
         "description": "Builds an unsigned XDR to permanently lock a project, preventing further metadata or collaborator changes. Rejected with 401 UNAUTHORIZED when `owner` is not the on-chain project owner.",
@@ -3637,6 +3976,110 @@
           }
         },
         "summary": "Update project metadata (title/category)",
+        "tags": [
+          "Splits"
+        ]
+      }
+    },
+    "/splits/{projectId}/restore": {
+      "post": {
+        "description": "Owner only: requires a session (Authorization: Bearer) for the wallet that owns the project on-chain. Re-enables state-changing actions.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "reason": {
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "nullable": true
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Updated lifecycle record"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "UNAUTHORIZED",
+                  "message": "Missing or invalid bearer token / admin API key.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "NOT_FOUND",
+                  "message": "Project afrobeats_001 does not exist.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "error": "CONFLICT",
+                  "message": "A project with ID \"afrobeats_001\" already exists.",
+                  "requestId": "b6f1a2d4-8c3e-4a1b-9f2e-6d5c7a8b9c0d"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict with existing resource"
+          }
+        },
+        "summary": "Restore an archived project",
         "tags": [
           "Splits"
         ]
@@ -4449,19 +4892,25 @@
     },
     "/users/login": {
       "post": {
-        "description": "Returns a JWT for an active registered wallet. Five failed attempts within 15 minutes lock that wallet for 15 minutes. Unknown, inactive, deleted, and locked wallets receive the same 401 response. The existing per-IP limiter may also return 429.",
+        "description": "Verifies a challenge from GET /auth/challenge signed by the wallet, then returns a JWT for an active registered wallet. Each signed challenge is accepted once; a bad signature is a failed attempt. Five failed attempts within 15 minutes lock that wallet for 15 minutes. Unknown, inactive, deleted, and locked wallets receive the same 401 response. The existing per-IP limiter may also return 429.",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "properties": {
+                  "signedChallenge": {
+                    "description": "Base64 XDR of the GET /auth/challenge transaction after the wallet signs it",
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "walletAddress": {
                     "minLength": 1,
                     "type": "string"
                   }
                 },
                 "required": [
-                  "walletAddress"
+                  "walletAddress",
+                  "signedChallenge"
                 ],
                 "type": "object"
               }
@@ -4566,7 +5015,7 @@
             "description": "Internal server error"
           }
         },
-        "summary": "Log in by wallet address",
+        "summary": "Log in with a signed wallet challenge",
         "tags": [
           "Users"
         ]
@@ -4906,7 +5355,7 @@
     },
     "/users/register": {
       "post": {
-        "description": "Creates a user profile linked to a Stellar wallet address.",
+        "description": "Creates a user profile linked to a Stellar wallet address. Requires a challenge from GET /auth/challenge signed by that wallet, so nobody can register an address they do not control.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4930,13 +5379,19 @@
                     ],
                     "type": "string"
                   },
+                  "signedChallenge": {
+                    "description": "Base64 XDR of the GET /auth/challenge transaction after the wallet signs it",
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "walletAddress": {
                     "minLength": 1,
                     "type": "string"
                   }
                 },
                 "required": [
-                  "walletAddress"
+                  "walletAddress",
+                  "signedChallenge"
                 ],
                 "type": "object"
               }

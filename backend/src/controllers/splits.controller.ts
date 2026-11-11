@@ -17,6 +17,7 @@ import {
   simulateReadOnlyContractCall,
 } from "../services/splits.service.js";
 import { invalidateCache, invalidateCacheByPrefix } from "../services/stellar.js";
+import { assertProjectActionAllowed } from "../services/project-lifecycle.js";
 import { recordProjectEdit } from "../services/project-history.js";
 import { contractU32Schema } from "../schemas/stellar-rpc.schemas.js";
 import { decodeContractValue } from "../services/rpc-response-validation.js";
@@ -159,6 +160,7 @@ export class SplitsController {
     try {
       const projectId = projectIdParamSchema.parse(req.params.projectId);
       const body = depositSchema.parse(req.body);
+      await assertProjectActionAllowed(projectId, "fund");
       const result = await buildDepositUnsignedXdr({
         projectId,
         from: body.from,

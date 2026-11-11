@@ -22,6 +22,12 @@ const serverMock = {
 
 // The expiration store is off-chain (Postgres); these route tests run without
 // a database, so model every project as non-expiring.
+// Cancellation/archival records live in Postgres, which these tests do not run.
+vi.mock("../services/project-lifecycle.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/project-lifecycle.js")>()),
+  assertProjectActionAllowed: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../services/project-expiration.js", () => ({
   assertProjectNotExpired: vi.fn().mockResolvedValue(undefined),
   getProjectExpiration: vi.fn().mockResolvedValue(undefined),

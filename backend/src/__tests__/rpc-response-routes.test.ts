@@ -31,6 +31,12 @@ const server = vi.hoisted(() => ({
   getEvents: vi.fn(),
 }));
 
+// Cancellation/archival records live in Postgres, which these tests do not run.
+vi.mock("../services/project-lifecycle.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/project-lifecycle.js")>()),
+  assertProjectActionAllowed: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../services/stellar.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/stellar.js")>();
   return {
