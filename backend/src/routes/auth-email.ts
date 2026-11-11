@@ -18,6 +18,7 @@ import { IsNull } from "typeorm";
 import { getMaxSessionVersionForEmail, revokeSessionsForEmail } from "../services/session-revocation.js";
 import { verificationResendCooldown } from "../services/verification-resend-cooldown.js";
 import { logAuthEvent } from "../services/auth-events.js";
+import { resolveCorsOrigins } from "../config/cors.js";
 import {
   consumeEmailVerificationToken,
   hashEmailVerificationToken,
@@ -28,9 +29,54 @@ import {
 
 export const authEmailRouter = Router();
 
+const DEFAULT_RESET_URL_BASE = "https://app.splitnaira.com/reset-password";
+const DEFAULT_VERIFY_URL_BASE = "https://app.splitnaira.com/verify-email";
+const DEFAULT_INVITE_URL_BASE = "https://app.splitnaira.com/invite";
+
+function originOf(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reset, verification and invitation links carry a live token, so a caller-supplied link
+ * base must point at the app. Otherwise anyone could request a reset for
+ * someone else's address with a base on a site they control, and the victim's
+ * click would deliver the token there. Trusted origins are the CORS allowlist
+ * (never `*`) plus the origins of the configured link bases.
+ */
+export function isTrustedLinkBase(url: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const origin = originOf(url);
+  if (!origin) return false;
+  let corsOrigins: string[] = [];
+  try {
+    corsOrigins = resolveCorsOrigins(env) || [];
+  } catch {
+    // A rejected CORS config (e.g. `*` in production) trusts nothing extra.
+  }
+  const trusted = new Set(
+    [
+      ...corsOrigins.filter((o) => o !== "*"),
+      originOf(env.PASSWORD_RESET_URL_BASE ?? DEFAULT_RESET_URL_BASE),
+      originOf(env.EMAIL_VERIFICATION_URL_BASE ?? DEFAULT_VERIFY_URL_BASE),
+      originOf(env.INVITATION_URL_BASE ?? DEFAULT_INVITE_URL_BASE),
+    ].filter((o): o is string => Boolean(o))
+  );
+  return trusted.has(origin);
+}
+
+const trustedLinkBaseSchema = z
+  .string()
+  .url()
+  .refine((url) => isTrustedLinkBase(url), "must point at an allowed app origin");
+
 const passwordResetRequestSchema = z.object({
   email: z.string().email("Invalid email format"),
-  resetUrlBase: z.string().url().optional(),
+  resetUrlBase: trustedLinkBaseSchema.optional(),
 });
 
 const passwordResetConfirmSchema = z.object({
@@ -40,7 +86,7 @@ const passwordResetConfirmSchema = z.object({
 
 const emailVerificationResendSchema = z.object({
   email: z.string().email("Invalid email format"),
-  verifyUrlBase: z.string().url().optional(),
+  verifyUrlBase: trustedLinkBaseSchema.optional(),
 });
 
 const emailVerificationConfirmSchema = z.object({
@@ -50,7 +96,7 @@ const emailVerificationConfirmSchema = z.object({
 const invitationRequestSchema = z.object({
   email: z.string().email("Invalid email format"),
   inviterWalletAddress: z.string().optional(),
-  inviteUrlBase: z.string().url().optional(),
+  inviteUrlBase: trustedLinkBaseSchema.optional(),
 });
 
 const invitationAcceptSchema = z.object({
@@ -75,7 +121,7 @@ authEmailRouter.post("/password-reset/request", async (req: Request, res: Respon
     // confirmed once (#1446); see /password-reset/confirm.
     const sessionVersion = (await getMaxSessionVersionForEmail(email)) ?? 0;
     const token = signEmailFlowToken(email, "password_reset", { sv: sessionVersion });
-    const base = resetUrlBase ?? process.env.PASSWORD_RESET_URL_BASE ?? "https://app.splitnaira.com/reset-password";
+    const base = resetUrlBase ?? process.env.PASSWORD_RESET_URL_BASE ?? DEFAULT_RESET_URL_BASE;
     const resetUrl = `${base}?token=${encodeURIComponent(token)}`;
 
     await getEmailProvider().sendPasswordResetEmail({
@@ -177,7 +223,7 @@ authEmailRouter.post("/email-verification/resend", async (req: Request, res: Res
       await rotateEmailVerificationToken(email, issued);
 
       const base =
-        body.verifyUrlBase ?? process.env.EMAIL_VERIFICATION_URL_BASE ?? "https://app.splitnaira.com/verify-email";
+        body.verifyUrlBase ?? process.env.EMAIL_VERIFICATION_URL_BASE ?? DEFAULT_VERIFY_URL_BASE;
       try {
         await getEmailProvider().sendVerificationEmail({
           to: email,
@@ -262,7 +308,7 @@ authEmailRouter.post("/invitations", async (req: Request, res: Response, next: N
       projectId,
       inviterWalletAddress,
     });
-    const base = inviteUrlBase ?? process.env.INVITATION_URL_BASE ?? "https://app.splitnaira.com/invite";
+    const base = inviteUrlBase ?? process.env.INVITATION_URL_BASE ?? DEFAULT_INVITE_URL_BASE;
     const inviteUrl = `${base}?token=${encodeURIComponent(token)}`;
 
     await getEmailProvider().sendInvitationEmail({

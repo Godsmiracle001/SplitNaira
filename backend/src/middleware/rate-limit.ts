@@ -152,9 +152,19 @@ function createLimiter(
  * Protects the process from catastrophic volumetric floods.
  */
 export const globalLimiter = createLimiter(RATE_LIMIT_POLICIES.global, {
-  // Skip well-known health check calls from internal monitors.
-  skip: (req) => req.path === "/health" && req.method === "GET",
+  skip: (req) => isUnthrottledProbe(req.method, req.originalUrl),
 });
+
+/**
+ * Liveness and startup probes answer from process memory, and orchestrators
+ * poll them constantly, so they are never rate limited. Readiness
+ * (`/health`, `/health/ready`) checks the database and Stellar RPC on every
+ * call and stays limited, so it cannot be used to multiply upstream load.
+ */
+export function isUnthrottledProbe(method: string, url: string): boolean {
+  const path = url.split("?")[0];
+  return method === "GET" && (path === "/health/live" || path === "/health/startup");
+}
 
 /** General read endpoints. */
 export const readLimiter = createLimiter(RATE_LIMIT_POLICIES.read);

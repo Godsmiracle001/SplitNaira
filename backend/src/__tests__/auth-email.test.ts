@@ -83,7 +83,7 @@ describe("Auth Email Flows", () => {
       .post("/auth/password-reset/request")
       .send({
         email: "known@example.com",
-        resetUrlBase: "https://example.com/reset",
+        resetUrlBase: "https://app.splitnaira.com/reset",
       });
 
     expect(issueRes.status).toBe(202);
@@ -96,6 +96,19 @@ describe("Auth Email Flows", () => {
 
     expect(confirmRes.status).toBe(200);
     expect(confirmRes.body.success).toBe(true);
+  });
+
+  it.each([
+    ["/auth/password-reset/request", { email: "known@example.com", resetUrlBase: "https://attacker.example/steal" }],
+    ["/auth/email-verification/resend", { email: "known@example.com", verifyUrlBase: "https://attacker.example/steal" }],
+    ["/auth/invitations", { email: "invitee@example.com", inviteUrlBase: "https://attacker.example/steal" }],
+  ])("rejects a link base on an untrusted origin for %s (token would leak to it)", async (path, body) => {
+    findOneMock.mockResolvedValue({ email: "known@example.com" });
+    const response = await request(createApp()).post(path).send(body);
+
+    expect(response.status).toBe(400);
+    expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+    expect(sendInvitationEmailMock).not.toHaveBeenCalled();
   });
 
   it("sends invitation email", async () => {
@@ -115,7 +128,7 @@ describe("Auth Email Flows", () => {
     const app = createApp();
     await request(app)
       .post("/auth/invitations")
-      .send({ email: "invitee@example.com", inviteUrlBase: "https://example.com/invite" })
+      .send({ email: "invitee@example.com", inviteUrlBase: "https://app.splitnaira.com/invite" })
       .expect(202);
 
     const token = sendInvitationEmailMock.mock.calls[0]?.[0]?.token;

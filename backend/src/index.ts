@@ -33,6 +33,7 @@ import {
   adminLimiter,
   authLimiter,
   sseConnectionLimiter,
+  isUnthrottledProbe,
 } from "./middleware/rate-limit.js";
 import {
   enforcePaymentsAdminWriteEnabled,
@@ -121,7 +122,10 @@ app.use(
   })
 );
 
-app.use("/health", readLimiter);
+// Liveness/startup probes are exempt; readiness stays limited (see isUnthrottledProbe).
+app.use("/health", (req, res, next) =>
+  isUnthrottledProbe(req.method, req.originalUrl) ? next() : readLimiter(req, res, next)
+);
 app.use(
   "/splits/admin",
   adminLimiter,

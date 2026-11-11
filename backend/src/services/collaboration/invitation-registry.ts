@@ -158,6 +158,7 @@ export function reinvite(input: {
       cancelInvitation({
         invitationId: existing.id,
         actorWalletAddress: input.inviterWalletAddress,
+        now,
       });
     }
   }
@@ -165,18 +166,18 @@ export function reinvite(input: {
   return registerInvitation({ ...input, now });
 }
 
-export function getInvitationById(id: string): InvitationRecord | undefined {
+export function getInvitationById(id: string, now: Date = new Date()): InvitationRecord | undefined {
   const record = invitations.get(id);
   if (!record) return undefined;
-  return markExpiredIfNeeded(record);
+  return markExpiredIfNeeded(record, now);
 }
 
-export function getInvitationByTokenJti(jti: string): InvitationRecord | undefined {
+export function getInvitationByTokenJti(jti: string, now: Date = new Date()): InvitationRecord | undefined {
   const id = tokenIndex.get(jti);
   if (!id) return undefined;
   const record = invitations.get(id);
   if (!record) return undefined;
-  return markExpiredIfNeeded(record);
+  return markExpiredIfNeeded(record, now);
 }
 
 /**
@@ -201,6 +202,8 @@ export function cancelInvitation(input: {
    * state, never from the request being authorized.
    */
   projectOwnerAddress?: string;
+  /** Clock for the expiry check; defaults to the current time. */
+  now?: Date;
 }): InvitationRecord {
   const record = invitations.get(input.invitationId);
   if (!record) {
@@ -209,7 +212,7 @@ export function cancelInvitation(input: {
       status: 404,
     });
   }
-  markExpiredIfNeeded(record);
+  markExpiredIfNeeded(record, input.now);
   if (record.status === "cancelled") {
     return record; // idempotent
   }
@@ -282,7 +285,7 @@ export function acceptInvitationByTokenJti(
   jti: string,
   now: Date = new Date(),
 ): InvitationRecord {
-  const record = getInvitationByTokenJti(jti);
+  const record = getInvitationByTokenJti(jti, now);
   if (!record) {
     throw Object.assign(new Error("invitation_not_tracked"), {
       code: "invitation_not_tracked",

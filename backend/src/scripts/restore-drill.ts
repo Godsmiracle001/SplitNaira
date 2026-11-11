@@ -277,7 +277,26 @@ export async function validateRestore(
 ): Promise<DrillReport> {
   const snapshot = await captureSnapshot(restored);
   const findings = compareSnapshots(baseline.tables, snapshot);
-  const audit = await runDatabaseConsistencyAudit(restored);
+  // The audit reads the same tables; on a restore missing one it throws.
+  // That broken restore is exactly what the drill must report, not crash on:
+  // the snapshot comparison above already names the missing table.
+  let audit: { ok: boolean; findings: ConsistencyFinding[] };
+  try {
+    audit = await runDatabaseConsistencyAudit(restored);
+  } catch (error) {
+    audit = {
+      ok: false,
+      findings: [
+        {
+          checkId: "consistency-audit-failed",
+          severity: "critical",
+          message: `Consistency audit could not run on the restore: ${sanitizeErrorMessage(
+            error instanceof Error ? error.message : String(error),
+          )}`,
+        },
+      ],
+    };
+  }
   return {
     generatedAt: now.toISOString(),
     baselineCapturedAt: baseline.capturedAt,

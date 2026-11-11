@@ -13,8 +13,12 @@ import { app } from "../index.js";
 
 
 // Mock stellar services
-const mockGetStellarRpcServer = vi.fn();
-const mockLoadStellarConfig = vi.fn();
+// vi.mock factories are hoisted above plain declarations; vi.hoisted is not.
+const { mockGetStellarRpcServer, mockLoadStellarConfig, mockGetDataSource } = vi.hoisted(() => ({
+  mockGetStellarRpcServer: vi.fn(),
+  mockLoadStellarConfig: vi.fn(),
+  mockGetDataSource: vi.fn(),
+}));
 
 vi.mock("../services/stellar.js", async () => {
   const actual = await vi.importActual<typeof import("../services/stellar.js")>("../services/stellar.js");
@@ -27,7 +31,6 @@ vi.mock("../services/stellar.js", async () => {
 });
 
 // Mock database
-const mockGetDataSource = vi.fn();
 vi.mock("../services/database.js", async () => {
   const actual = await vi.importActual<typeof import("../services/database.js")>("../services/database.js");
   return {
@@ -144,23 +147,26 @@ describe("Error Scenarios - Input Validation", () => {
 
 describe("Error Scenarios - Rate Limiting", () => {
   describe("Global rate limiter", () => {
-    it("should enforce rate limits on rapid requests", async () => {
-      const results = [];
-
-      // Send multiple requests rapidly
-      for (let i = 0; i < 200; i++) {
-        const response = await request(app)
-          .get("/health");
-
-        results.push(response.status);
+    // Limits and 429s are covered in middleware/__tests__/rate-limit*.test.ts.
+    // Liveness and startup probes answer from memory and are polled
+    // constantly, so they are never throttled; readiness (/health, which
+    // checks DB and RPC) stays limited.
+    it("never rate-limits the liveness and startup probes", async () => {
+      const statuses = new Set<number>();
+      for (let i = 0; i < 150; i++) {
+        statuses.add((await request(app).get("/health/live")).status);
+        statuses.add((await request(app).get("/health/startup")).status);
       }
 
-      // Should eventually hit 429 (Too Many Requests) due to global limiter
-      const _has429 = results.some(status => status === 429);
-      const has200 = results.some(status => status === 200);
+      expect(statuses.has(429)).toBe(false);
+    });
 
-      expect(has200).toBe(true); // Some requests succeed
-      // Note: May not get 429 depending on limiter config — both are acceptable
+    it("keeps the readiness endpoint rate limited", async () => {
+      const { isUnthrottledProbe } = await import("../middleware/rate-limit.js");
+      expect(isUnthrottledProbe("GET", "/health")).toBe(false);
+      expect(isUnthrottledProbe("GET", "/health/ready")).toBe(false);
+      expect(isUnthrottledProbe("POST", "/health/live")).toBe(false);
+      expect(isUnthrottledProbe("GET", "/health/live?x=1")).toBe(true);
     });
   });
 });

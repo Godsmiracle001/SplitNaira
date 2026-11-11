@@ -277,14 +277,14 @@ describe("correlation ids and secrets in auth logs", () => {
     const { text } = await captureLogs(async () => {
       await request(app)
         .post("/auth/password-reset/request")
-        .send({ email: EMAIL, resetUrlBase: "https://example.com/reset" });
+        .send({ email: EMAIL, resetUrlBase: "https://app.splitnaira.com/reset" });
     });
     // Recover the token the same way a user would: from the (redacted) log, which must not have it.
     issuedToken = (text.match(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/) ?? [""])[0];
 
     expect(issuedToken).toBe("");
     expect(text).not.toContain("token=");
-    expect(text).toContain("https://example.com/reset"); // origin + path are still useful
+    expect(text).toContain("https://app.splitnaira.com/reset"); // origin + path are still useful
   });
 
   it("records the email only as a hash in auth events", async () => {

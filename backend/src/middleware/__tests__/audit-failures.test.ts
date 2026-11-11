@@ -160,7 +160,7 @@ describe("Issue #1031: Admin audit log captures mutations (success path)", () =>
     await request(app)
       .post("/splits/admin/allow-token")
       .set("x-request-id", customId)
-      .send({ admin: "GADMIN", token: "GTOKEN" })
+      .send({ admin: "GADMIN", token: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4" })
       .expect(200);
 
     // Wait for the async 'finish' listener to fire
@@ -170,7 +170,7 @@ describe("Issue #1031: Admin audit log captures mutations (success path)", () =>
     const savedEntry = mockCreate.mock.calls[0][0];
     expect(savedEntry.requestId).toBe(customId);
     expect(savedEntry.action).toBe("allow_token");
-    expect(savedEntry.payload).toMatchObject({ admin: "GADMIN", token: "GTOKEN" });
+    expect(savedEntry.payload).toMatchObject({ admin: "GADMIN", token: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4" });
   });
 
   it("logs successful disallow-token mutation with payload", async () => {

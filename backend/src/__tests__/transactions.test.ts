@@ -133,9 +133,17 @@ describe("Transaction History API", () => {
   describe("GET /transactions/:txHash", () => {
     it("should return 404 for non-existent transaction", async () => {
       const response = await request(app)
-        .get("/transactions/nonexistenthash123");
+        .get(`/transactions/${"ab".repeat(32)}`);
 
       expect(response.status).toBe(404);
+    });
+
+    it("should return 400 for a malformed hash without echoing it", async () => {
+      const response = await request(app)
+        .get("/transactions/nonexistenthash123");
+
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(response.body)).not.toContain("nonexistenthash123");
     });
 
     it("should reject empty transaction hash", async () => {

@@ -245,11 +245,13 @@ transactionsRouter.get("/:txHash", async (req: Request, res: Response, next: Nex
     const txHashParam = req.params.txHash;
     const txHash = Array.isArray(txHashParam) ? txHashParam[0] : txHashParam;
 
-    if (!txHash || txHash.length === 0) {
+    // Same rule as /receipt/:txHash. Arbitrary input must not reach the
+    // payout search or be echoed back in the not-found message.
+    if (!txHash || !/^[a-fA-F0-9]{64}$/.test(txHash)) {
       throw new AppError(
         ErrorType.VALIDATION,
         ErrorCode.VALIDATION_ERROR,
-        "Transaction hash is required."
+        "Transaction hash must be 64 hexadecimal characters."
       );
     }
 

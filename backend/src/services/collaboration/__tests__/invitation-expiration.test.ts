@@ -84,20 +84,21 @@ describe("invitation expiration (#1298)", () => {
       now,
     });
 
+    const later = new Date(now.getTime() + 1000);
     const replacement = reinvite({
       email: "a@example.com",
       tokenJti: "jti-pending-new",
       projectId: "proj1",
       inviterWalletAddress: "GINVITER",
-      now: new Date(now.getTime() + 1000),
+      now: later,
     });
 
     expect(original.status).toBe("cancelled");
     expect(replacement.status).toBe("pending");
-    expect(() => acceptInvitationByTokenJti("jti-pending-old")).toThrow(
+    expect(() => acceptInvitationByTokenJti("jti-pending-old", later)).toThrow(
       /invitation_cancelled/,
     );
-    expect(acceptInvitationByTokenJti("jti-pending-new").status).toBe(
+    expect(acceptInvitationByTokenJti("jti-pending-new", later).status).toBe(
       "accepted",
     );
   });

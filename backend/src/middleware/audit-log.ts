@@ -12,9 +12,12 @@
  * Redacted fields (case-insensitive key match):
  *   - `apiKey`, `api_key`, `secret`, `token`, `password`, `privateKey`,
  *     `private_key`, `seed`, `xdr`, `signature`, `sig`
+ *   - Exception: a `token` whose value is a public Stellar address (token
+ *     contract `C...` or account `G...`) is kept.
  */
 
 import type { NextFunction, Request, Response } from "express";
+import { StrKey } from "@stellar/stellar-sdk";
 import { getDataSource } from "../services/database.js";
 import { AuditLog } from "../entities/AuditLog.js";
 import { hashIp } from "./payments-admin.js";
@@ -43,8 +46,20 @@ const REDACTED_KEYS = new Set([
   "mnemonic",
 ]);
 
-function isRedactedKey(key: string): boolean {
-  return REDACTED_KEYS.has(key.toLowerCase().replace(/[-_]/g, ""));
+function isPublicStellarAddress(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    (StrKey.isValidContract(value) || StrKey.isValidEd25519PublicKey(value))
+  );
+}
+
+function isRedactedKey(key: string, value?: unknown): boolean {
+  const normalized = key.toLowerCase().replace(/[-_]/g, "");
+  // Allowlist actions are about which token was allowed, and a public
+  // Stellar address is never a secret. Anything else under `token` (a JWT,
+  // an API token, a secret seed) is still redacted.
+  if (normalized === "token" && isPublicStellarAddress(value)) return false;
+  return REDACTED_KEYS.has(normalized);
 }
 
 /**
@@ -61,7 +76,7 @@ export function redactSensitivePayload(
 
   for (const [key, value] of Object.entries(payload)) {
     // Check the direct key
-    if (isRedactedKey(key)) {
+    if (isRedactedKey(key, value)) {
       redacted[key] = "[REDACTED]";
       continue;
     }
@@ -72,7 +87,7 @@ export function redactSensitivePayload(
       const redactedNested: Record<string, unknown> = {};
       let anyRedacted = false;
       for (const [nk, nv] of Object.entries(nested)) {
-        if (isRedactedKey(nk)) {
+        if (isRedactedKey(nk, nv)) {
           redactedNested[nk] = "[REDACTED]";
           anyRedacted = true;
         } else {

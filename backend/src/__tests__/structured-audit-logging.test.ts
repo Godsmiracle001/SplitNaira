@@ -160,6 +160,21 @@ describe("redactSensitivePayload", () => {
     expect(result.signature).toBe("[REDACTED]");
   });
 
+  it("keeps a token that is a public Stellar address but redacts any other token", () => {
+    const contract = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+    const account = "GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H";
+    const seed = "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.sig";
+
+    expect(redactSensitivePayload({ token: contract }).token).toBe(contract);
+    expect(redactSensitivePayload({ token: account }).token).toBe(account);
+    expect(redactSensitivePayload({ token: seed }).token).toBe("[REDACTED]");
+    expect(redactSensitivePayload({ token: jwt }).token).toBe("[REDACTED]");
+    expect(redactSensitivePayload({ nested: { token: jwt } }).nested).toEqual({ token: "[REDACTED]" });
+    // The exemption is for `token` only, never for keys like `secret`.
+    expect(redactSensitivePayload({ secret: contract }).secret).toBe("[REDACTED]");
+  });
+
   it("normalises hyphenated and snake_case keys before matching", () => {
     // Regression: matching only lowercased the key, so these reached the log.
     const result = redactSensitivePayload({
